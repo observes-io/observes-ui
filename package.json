@@ -1,0 +1,71 @@
+{
+  "name": "observes-ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@emotion/react": "11.13.3",
+    "@emotion/styled": "11.13.0",
+    "@fusionauth/react-sdk": "^2.4.3",
+    "@mui/icons-material": "^7.1.0",
+    "@mui/lab": "^7.0.0-beta.12",
+    "@mui/material": "^7.1.0",
+    "@mui/x-charts": "^7.22.2",
+    "@mui/x-data-grid": "^7.22.2",
+    "@mui/x-data-grid-pro": "^7.22.2",
+    "@mui/x-date-pickers": "^7.22.2",
+    "@mui/x-date-pickers-pro": "^7.22.2",
+    "@mui/x-tree-view": "^7.22.1",
+    "@react-spring/web": "9.7.5",
+    "axios": "^1.7.9",
+    "azure-devops-extension-sdk": "^4.0.2",
+    "chart.js": "^4.4.8",
+    "clsx": "2.1.1",
+    "d3": "^7.9.0",
+    "dayjs": "1.11.13",
+    "dompurify": "^3.2.1",
+    "globals": "^15.14.0",
+    "http-proxy-middleware": "^3.0.3",
+    "react": "^18.3.1",
+    "react-chartjs-2": "^5.3.0",
+    "react-dom": "18.3.1",
+    "react-flow-renderer": "^10.3.17",
+    "react-hook-form": "^7.55.0",
+    "react-router-dom": "^6.28.0",
+    "web-vitals": "^4.2.4"
+  },
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@xyflow/react": "^12.6.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "install": "^0.13.0",
+    "typescript": "4.9.5",
+    "vite": "^6.3.5"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

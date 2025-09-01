@@ -1,0 +1,25 @@
+/* Minimal scrollbar styles for all browsers */
+
+/* Chrome, Edge, Safari */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cfd8dc;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cfd8dc transparent;
+}
+
+/* Optional: Hide scrollbar corner */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

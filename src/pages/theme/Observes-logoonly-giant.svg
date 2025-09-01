@@ -1,0 +1,24 @@
+<svg width="768" height="768" viewBox="0 0 768 768" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Molecule-style purple logo">
+  <!-- tweak this to match your exact brand color -->
+  <defs>
+    <style>
+      .stem { stroke:#6A3DFC; stroke-width:15; stroke-linecap:round; fill:none; }
+      .node { fill:#6A3DFC; }
+    </style>
+  </defs>
+
+  <!-- stems -->
+  <path class="stem" d="M384 476 L384 620" />
+  <path class="stem" d="M292 384 L160 384" />
+  <path class="stem" d="M310 316 L240 248" />
+  <path class="stem" d="M460 320 L560 208" />
+
+  <!-- central ring -->
+  <circle cx="384" cy="384" r="92" class="stem"/>
+
+  <!-- end nodes -->
+  <circle cx="384" cy="620" r="50" class="node"/>
+  <circle cx="160" cy="384" r="40" class="node"/>
+  <circle cx="240" cy="248" r="40" class="node"/>
+  <circle cx="560" cy="208" r="64" class="node"/>
+</svg>
