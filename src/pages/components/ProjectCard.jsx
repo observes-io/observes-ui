@@ -24,7 +24,10 @@ import {
     MenuItem,
     Select,
     Chip,
-    Tooltip as MuiTooltip
+    Tooltip as MuiTooltip,
+    Tabs,
+    Tab,
+    Divider
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
@@ -45,6 +48,15 @@ import {
 import { useEffect, useRef, useState, useMemo } from 'react';
 import dayjs from 'dayjs';
 import useStore from '../../state/stores/store';
+import PipelinesTab from './project/PipelinesTab';
+import ReposTab from './project/ReposTab';
+import BuildsTab from './project/BuildsTab';
+import ServiceConnectionsTab from './project/ServiceConnectionsTab';
+import VariableGroupsTab from './project/VariableGroupsTab';
+import SecureFilesTab from './project/SecureFilesTab';
+import QueuesTab from './project/QueuesTab';
+import ArtifactsTab from './project/ArtifactsTab';
+import { TabContext, TabPanel } from '@mui/lab';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
@@ -69,7 +81,6 @@ const GeneralSettingsTable = ({ buildSettings }) => {
                     </TableRow>
                 </TableHead>
                 <TableBody>
-                    {console.log('buildSettings:', buildSettings)}
                     {Object.entries(buildSettings).map(([key, value]) => (
                         <TableRow key={key}>
                             <TableCell>{formatKey(key)}</TableCell>
@@ -101,18 +112,11 @@ const ProjectCard = ({
     showBarChart,
     setShowBarChart
 }) => {
+    const [activeTab, setActiveTab] = useState('repos');
     const pieChartRef = useRef(null);
     const barChartRef = useRef(null);
-
     const [stats, setStats] = useState(null);
-    const [repos, setRepos] = useState([]);
-    const [reposTotal, setReposTotal] = useState(0);
-    const [repoPage, setRepoPage] = useState(1);
-    const [repoSearch, setRepoSearch] = useState('');
-    const [repoMatchType, setRepoMatchType] = useState('contains');
-    const [showDisabledRepos, setShowDisabledRepos] = useState(true);
-    const [reposPerPage, setReposPerPage] = useState(10);
-    const { fetchProjectStats, selectedScan, fetchProjectRepositories } = useStore();
+    const { fetchProjectStats, selectedScan } = useStore();
 
     // Fetch stats for this project using selectedScan
     useEffect(() => {
@@ -130,27 +134,6 @@ const ProjectCard = ({
         }
         fetchStats();
     }, [selectedScan, project.id]);
-
-    // Fetch all repositories for this project once, handle pagination locally
-    useEffect(() => {
-        async function fetchRepos() {
-            try {
-                if (selectedScan && selectedScan.id && project.id) {
-                    const result = await fetchProjectRepositories(selectedScan.id, project.id, null, null);
-                    const allRepos = Array.isArray(result) ? result : (result.repositories || []);
-                    setRepos(allRepos);
-                    setReposTotal(allRepos.length);
-                } else {
-                    setRepos([]);
-                    setReposTotal(0);
-                }
-            } catch {
-                setRepos([]);
-                setReposTotal(0);
-            }
-        }
-        fetchRepos();
-    }, [selectedScan, project.id, fetchProjectRepositories]);
 
     // Show more/less for project description
     const [showFullDescription, setShowFullDescription] = useState(false);
@@ -179,60 +162,77 @@ const ProjectCard = ({
         return <span title={`${daysAgo} day${daysAgo !== 1 ? 's' : ''} ago`}>{formattedDate}</span>;
     };
 
-    // Filtered repos and local pagination
-    const filteredRepos = repoSearch
-        ? repos.filter(r => {
-            if (!r.name) return false;
-            if (!showDisabledRepos && r.isDisabled) return false;
-            const name = r.name.toLowerCase();
-            const search = repoSearch.toLowerCase();
-            switch (repoMatchType) {
-                case 'exact':
-                    return name === search;
-                case 'starts':
-                    return name.startsWith(search);
-                case 'ends':
-                    return name.endsWith(search);
-                default:
-                    return name.includes(search);
-            }
-        })
-        : repos.filter(r => showDisabledRepos || !r.isDisabled);
-
-    // Local pagination
-    const pagedRepos = filteredRepos.slice((repoPage - 1) * reposPerPage, repoPage * reposPerPage);
-
-    // Repo state counts for chips (only for disabled repos, except active)
-    const disabledCount = filteredRepos.filter(r => r.isDisabled).length;
-    const emptyCount = filteredRepos.filter(r => r.size === 0).length;
-    const staleCount = filteredRepos.filter(r => r.stats?.state === 'stale').length;
-    const dormantCount = filteredRepos.filter(r => r.stats?.state === 'dormant').length;
-    // Active count: only for disabled repos, but for chip counts show all active
-    const activeCount = filteredRepos.filter(r => r.stats?.state === 'active').length;
-
-    // Reset to page 1 if search changes
-    useEffect(() => { setRepoPage(1); }, [repoSearch, repoMatchType, showDisabledRepos]);
-
     // Memoized chart data (must be before early return)
     const repoCount = stats?.resource_counts?.repository || 0;
     const serviceConnectionCount = stats?.resource_counts?.endpoint || 0;
     const variableGroupCount = stats?.resource_counts?.variablegroup || 0;
     const pipelineCount = stats?.resource_counts?.pipelines || 0;
+    const environmentCount = stats?.resource_counts?.environment || 0;
     const buildCount = stats?.resource_counts?.builds || 0;
     const securefileCount = stats?.resource_counts?.securefile || 0;
     const queuesCount = stats?.resource_counts?.queue || 0;
     const commitCount = stats?.resource_counts?.commits || 0;
     const committerCount = stats?.resource_counts?.unique_committers || 0;
+    const artifactFeedCount = stats?.resource_counts?.artifacts_feeds || 0;
+    const artifactPackageCount = stats?.resource_counts?.artifacts_packages || 0;
+
+    const leftTabs = [
+        { label: "Repositories", value: "repos" },
+        { label: "Artifacts", value: "artifacts" },
+    ];
+
+    const rightTabs = [
+        { label: "Pipelines", value: "pipelines" },
+        { label: "Builds", value: "builds" },
+        { label: "Service Connections", value: "service-connections" },
+        { label: "Variable Groups", value: "variable-groups" },
+        { label: "Secure Files", value: "secure-files" },
+        // { label: "Environments", value: "environments" },
+        { label: "Queues", value: "queues" },
+    ];
 
     const barChartData = useMemo(() => ({
-        labels: ['Pipes', 'Builds', 'Repos', 'SvcConns', 'VarGroups', 'SecFile', 'Queue', 'Commits', 'Committers'],
+        labels: ['Committers', 'ArtFeeds', 'Pipes', 'Builds', 'Repos', 'SvcConns', 'VarGroups', 'SecFile', 'Environments'],
         datasets: [
             {
-                data: [pipelineCount, buildCount, repoCount, serviceConnectionCount, variableGroupCount, securefileCount, queuesCount, commitCount, committerCount],
+                data: [committerCount, artifactFeedCount, pipelineCount, buildCount, repoCount, serviceConnectionCount, variableGroupCount, securefileCount, environmentCount],
+                backgroundColor: [
+                    resourceTypeStyle.committer.fill,
+                    resourceTypeStyle.artifact_feed.fill,
+                    resourceTypeStyle.pipeline.fill,
+                    resourceTypeStyle.build.fill,
+                    resourceTypeStyle.protected_resource.fill,
+                    resourceTypeStyle.protected_resource.fill,
+                    resourceTypeStyle.protected_resource.fill,
+                    resourceTypeStyle.protected_resource.fill,
+                    resourceTypeStyle.protected_resource.fill,
+                ],
+                borderColor: [
+                    resourceTypeStyle.committer.fill,
+                    resourceTypeStyle.artifact_feed.fill,
+                    resourceTypeStyle.pipeline.fill,
+                    resourceTypeStyle.build.fill,
+                    resourceTypeStyle.repo.fill,
+                    resourceTypeStyle.protected_resource.fill,
+                    resourceTypeStyle.protected_resource.fill,
+                    resourceTypeStyle.protected_resource.fill,
+                    resourceTypeStyle.protected_resource.fill,
+                ],
+                borderWidth: 1,
+            },
+        ],
+    }), [committerCount, artifactFeedCount, pipelineCount, buildCount, repoCount, serviceConnectionCount, variableGroupCount, securefileCount, environmentCount]);
+
+    const tableData = useMemo(() => ({
+        labels: ['Pipes', 'Builds', 'Repos', 'SvcConns', 'VarGroups', 'SecFile', 'Environments', 'Queue', 'Commits', 'Committers', 'ArtFeeds', 'ArtPackages'],
+        datasets: [
+            {
+                data: [pipelineCount, buildCount, repoCount, serviceConnectionCount, variableGroupCount, securefileCount, environmentCount, queuesCount, commitCount, committerCount, artifactFeedCount, artifactPackageCount],
                 backgroundColor: [
                     resourceTypeStyle.pipeline.fill,
                     resourceTypeStyle.pipeline.fill,
                     resourceTypeStyle.repo.fill,
+                    resourceTypeStyle.protected_resource.fill,
                     resourceTypeStyle.protected_resource.fill,
                     resourceTypeStyle.protected_resource.fill,
                     resourceTypeStyle.protected_resource.fill,
@@ -246,11 +246,12 @@ const ProjectCard = ({
                     resourceTypeStyle.protected_resource.stroke,
                     resourceTypeStyle.protected_resource.stroke,
                     resourceTypeStyle.protected_resource.stroke,
+                    resourceTypeStyle.protected_resource.stroke,
                 ],
                 borderWidth: 1,
             },
         ],
-    }), [pipelineCount, buildCount, repoCount, serviceConnectionCount, variableGroupCount, securefileCount, queuesCount, commitCount, committerCount]);
+    }), [pipelineCount, buildCount, repoCount, serviceConnectionCount, variableGroupCount, securefileCount, environmentCount, queuesCount, commitCount, committerCount, artifactFeedCount, artifactPackageCount]);
 
     const languageData = useMemo(() => (
         stats?.language_stats?.languageBreakdown && stats?.language_stats?.languageBreakdown.length > 0 ? {
@@ -307,9 +308,9 @@ const ProjectCard = ({
 
     // Table for bar chart data, split into two columns
     const BarChartTable = () => {
-        const mid = Math.ceil(barChartData.labels.length / 2);
-        const leftLabels = barChartData.labels.slice(0, mid);
-        const rightLabels = barChartData.labels.slice(mid);
+        const mid = Math.ceil(tableData.labels.length / 2);
+        const leftLabels = tableData.labels.slice(0, mid);
+        const rightLabels = tableData.labels.slice(mid);
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', gap: 2 }}>
                 <TableContainer sx={{ maxWidth: 180, margin: '0 auto', overflowX: 'visible' }}>
@@ -318,7 +319,7 @@ const ProjectCard = ({
                             {leftLabels.map((label, idx) => (
                                 <TableRow key={label}>
                                     <TableCell component="th" scope="row" sx={{ fontWeight: 'bold', width: '50%' }}>{label}</TableCell>
-                                    <TableCell>{barChartData.datasets[0].data[idx]}</TableCell>
+                                    <TableCell>{tableData.datasets[0].data[idx]}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -330,7 +331,7 @@ const ProjectCard = ({
                             {rightLabels.map((label, idx) => (
                                 <TableRow key={label}>
                                     <TableCell component="th" scope="row" sx={{ fontWeight: 'bold', width: '50%' }}>{label}</TableCell>
-                                    <TableCell>{barChartData.datasets[0].data[mid + idx]}</TableCell>
+                                    <TableCell>{tableData.datasets[0].data[mid + idx]}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -521,189 +522,77 @@ const ProjectCard = ({
 
                     {/* Repos */}
                     {/* {console.log('repoStart:', repoStart, 'repoEnd:', repoEnd, 'reposTotal:', reposTotal)} */}
-                    <Box sx={{ mt: 2 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 2 }}>
-                            <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', mr: 2 }}>
-                                {
-                                    (() => {
-                                        const filteredTotal = filteredRepos.length;
-                                        const start = filteredTotal === 0 ? 0 : (repoPage - 1) * reposPerPage + 1;
-                                        const end = Math.min(repoPage * reposPerPage, filteredTotal);
-                                        return `Repositories (${start}-${end} of ${filteredTotal})`;
-                                    })()
-                                }
-                            </Typography>
-                            {/* InputGroup-like filter controls for repos */}
-                            <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
-                                <Select
-                                    size="small"
-                                    value={repoMatchType}
-                                    onChange={e => setRepoMatchType(e.target.value)}
-                                    sx={{
-                                        width: 120,
-                                        borderTopRightRadius: 0,
-                                        borderBottomRightRadius: 0,
-                                        borderRight: 'none',
-                                        '& .MuiOutlinedInput-root': {
-                                            borderTopRightRadius: 0,
-                                            borderBottomRightRadius: 0,
-                                        },
-                                    }}
-                                >
-                                    <MenuItem value="contains">Contains</MenuItem>
-                                    <MenuItem value="exact">Exact</MenuItem>
-                                    <MenuItem value="starts">Starts with</MenuItem>
-                                    <MenuItem value="ends">Ends with</MenuItem>
-                                </Select>
-                                <TextField
-                                    size="small"
-                                    variant="outlined"
-                                    placeholder="Search repos"
-                                    value={repoSearch}
-                                    onChange={e => setRepoSearch(e.target.value)}
-                                    sx={{
-                                        width: 200,
-                                        borderTopLeftRadius: 0,
-                                        borderBottomLeftRadius: 0,
-                                        borderLeft: 'none',
-                                        ml: '-1px',
-                                        '& .MuiOutlinedInput-root': {
-                                            borderTopLeftRadius: 0,
-                                            borderBottomLeftRadius: 0,
-                                        },
-                                    }}
-                                />
-                            </Box>
-                            <Box sx={{
-                                display: 'flex',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                flexWrap: 'wrap',
-                                gap: 1.5,
-                                width: '100%',
-                                maxWidth: 450,
-                                mx: 'auto',
-                            }}>
-                                <Chip label={`Active: ${activeCount}`} color="success" size="small" />
-                                <Chip label={`Stale: ${staleCount}`} color="info" size="small" />
-                                <Chip label={`Dormant: ${dormantCount}`} color="default" size="small" />
-                                <Chip label={`Empty: ${emptyCount}`} color="warning" size="small" />
-                                <Chip label={`Disabled: ${disabledCount}`} color="error" size="small" />
-                            </Box>
-                            <Box sx={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
-                                <FormControlLabel
-                                    control={
-                                        <Checkbox
-                                            checked={showDisabledRepos}
-                                            onChange={e => setShowDisabledRepos(e.target.checked)}
-                                            size="small"
-                                        />
-                                    }
-                                    label={<Typography variant="caption" color="textSecondary">Show disabled</Typography>}
-                                    sx={{ ml: 1, mr: 0 }} />
-                            </Box>
-                            <MuiTooltip
-                                title={
-                                    <Box>
-                                        <Typography variant="body2" sx={{ mb: 1 }}>
-                                            <Chip label="Disabled" color="error" size="small" sx={{ mr: 1 }} />: Repository is disabled
-                                        </Typography>
-                                        <Typography variant="body2" sx={{ mb: 1 }}>
-                                            <Chip label="Empty" color="warning" size="small" sx={{ mr: 1 }} />: Repository size is 0 (empty)
-                                        </Typography>
-                                        <Typography variant="body2" sx={{ mb: 1 }}>
-                                            <Chip label="Stale" color="info" size="small" sx={{ mr: 1 }} />: Last commit was more than 3 months ago
-                                        </Typography>
-                                        <Typography variant="body2">
-                                            <Chip label="Dormant" color="default" size="small" sx={{ mr: 1 }} />: Last commit was more than 1 year ago
-                                        </Typography>
-                                    </Box>
-                                }
-                                placement="right"
+                    {/* Tabs Section */}
+                    <Divider sx={{ mt: 5 }} />
+                    <TabContext value={activeTab}>
+                        <Box sx={{ mt: 2, borderColor: 'divider' }}>
+                            <Tabs
+                                value={activeTab}
+                                onChange={(e, val) => setActiveTab(val)}
+                                aria-label="project tabs"
+                                sx={{ display: "flex", width: "100%" }}
                             >
-                                <HelpOutlineIcon color="action" sx={{ fontSize: 24, cursor: 'pointer', ml: 2 }} />
-                            </MuiTooltip>
+                                {leftTabs.map(({ label, value }) => (
+                                    <Tab
+                                        key={value}
+                                        label={label}
+                                        value={value}
+                                        sx={{
+                                            textTransform: "none",
+                                            mx: 0.5,
+                                            bgcolor: activeTab === value ? "action.hover" : "transparent",
+                                            color: activeTab === value ? "white" : "inherit",
+                                            "&:hover": { bgcolor: "action.hover" },
+                                        }}
+                                    />
+                                ))}
+
+                                {rightTabs.map(({ label, value }, idx) => (
+                                    <Tab
+                                        key={value}
+                                        label={label}
+                                        value={value}
+                                        sx={{
+                                            textTransform: "none",
+                                            fontSize: 12,
+                                            mx: 0.5,
+                                            bgcolor: activeTab === value ? "action.hover" : "transparent",
+                                            color: activeTab === value ? "white" : "inherit",
+                                            "&:hover": { bgcolor: "action.hover" },
+                                            ...(idx === 0 ? { marginLeft: 'auto' } : {}), // Add marginLeft: auto to the first of the right tabs
+                                        }}
+                                    />
+                                ))}
+                            </Tabs>
                         </Box>
-                        {pagedRepos.map((repo) => {
-                            let stateLabel = 'Enabled';
-                            if (repo.isMaintenance) {
-                                stateLabel = 'In Maintenance';
-                            } else if (repo.isDisabled) {
-                                stateLabel = 'Disabled';
-                            }
-                            return (
-                                <Accordion
-                                    key={repo.id}
-                                    sx={{
-                                        mt: 1,
-                                        transition: 'box-shadow 0.2s',
-                                        '&:hover': { boxShadow: 3 },
-                                    }}
-                                >
-                                    <AccordionSummary expandIcon="+">
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                            <Typography>{repo.name}</Typography>
-                                            {repo.isDisabled && (
-                                                <Chip label="Disabled" color="error" size="small" />
-                                            )}
-                                            {repo.size === 0 && (
-                                                <Chip label="Empty" color="warning" size="small" />
-                                            )}
-                                            {/* Only show Dormant/Stale chips for disabled repos, using repo.stats.state */}
-                                            {repo.stats?.state === 'stale' && (
-                                                <Chip label="Stale" color="info" size="small" />
-                                            )}
-                                            {repo.stats?.state === 'dormant' && (
-                                                <Chip label="Dormant" color="default" size="small" />
-                                            )}
-                                        </Box>
-                                    </AccordionSummary>
-                                    <AccordionDetails>
-                                        <Typography variant="body2" color="textSecondary">
-                                            <strong>Size:</strong> {(repo.size / 1024).toFixed(2)} KB<br />
-                                            <strong>Default Branch:</strong> {repo.defaultBranch || 'N/A'}<br />
-                                            <strong>State:</strong> {stateLabel}<br />
-                                            <strong>First Commit:</strong> {repo.stats?.firstCommitDate ? formatDateWithDaysAgo(repo.stats.firstCommitDate) : 'N/A'}<br />
-                                            <strong>Last Commit:</strong> {repo.stats?.lastCommitDate ? formatDateWithDaysAgo(repo.stats.lastCommitDate) : 'N/A'}<br />
-                                            <strong>Age:</strong> {repo.stats?.age ? formatAge(repo.stats.age) : 'N/A'}<br />
-                                            <strong>Number of Branches:</strong> {repo.stats?.branches ?? 'N/A'}<br />
-                                            <strong>Total Pull Requests:</strong> {repo.stats?.pullRequests?.all ?? 'N/A'}<br />
-                                            <strong>Active Pull Requests:</strong> {repo.stats?.pullRequests?.active ?? 'N/A'}<br />
-                                            <strong>Total Commits (Last 90 days):</strong> {repo.stats?.committers?.totalCommits ?? 'N/A'}<br />
-                                            <strong>Committers Count (Last 90 days):</strong> {repo.stats?.committers?.count ?? 'N/A'}<br />
-                                            <strong>Unique Committers (Last 90 days):</strong> {repo.stats?.committers?.uniqueCommitters ?? 'N/A'}<br />
-                                            <strong>URL:</strong> <a href={repo.webUrl} target="_blank" rel="noopener noreferrer">{repo.webUrl ? decodeURIComponent(repo.webUrl) : ''}</a>
-                                        </Typography>
-                                    </AccordionDetails>
-                                </Accordion>
-                            );
-                        })}
-                        {/* Pagination Controls */}
-                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 2 }}>
-                            <Button
-                                onClick={() => setRepoPage((prev) => Math.max(prev - 1, 1))}
-                                disabled={repoPage === 1}
-                                sx={{ mr: 1 }}
-                            >
-                                Previous
-                            </Button>
-                            <Typography variant="caption" sx={{ mx: 1 }}>
-                                Page {repoPage} of {Math.max(1, Math.ceil(reposTotal / reposPerPage))}
-                            </Typography>
-                            <Button
-                                onClick={() => setRepoPage((prev) => prev + 1)}
-                                disabled={repoPage * reposPerPage >= reposTotal}
-                                sx={{ mr: 1 }}
-                            >
-                                Next
-                            </Button>
-                        </Box>
-                        {pagedRepos.length === 0 && (
-                            <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
-                                No repositories found.
-                            </Typography>
-                        )}
-                    </Box>
+                        <TabPanel value="repos">
+                            <ReposTab projectId={project.id} repoLanguages={stats.language_stats.repositoryLanguageAnalytics} />
+                        </TabPanel>
+                        <TabPanel value="pipelines">
+                            <PipelinesTab projectId={project.id} />
+                        </TabPanel>
+                        <TabPanel value="builds">
+                            <BuildsTab projectId={project.id} />
+                        </TabPanel>
+                        <TabPanel value="service-connections">
+                            <ServiceConnectionsTab projectId={project.id} />
+                        </TabPanel>
+                        <TabPanel value="variable-groups">
+                            <VariableGroupsTab projectId={project.id} />
+                        </TabPanel>
+                        <TabPanel value="secure-files">
+                            <SecureFilesTab projectId={project.id} />
+                        </TabPanel>
+                        <TabPanel value="queues">
+                            <QueuesTab projectId={project.id} />
+                        </TabPanel>
+                        {/* <TabPanel value="environments">
+                            <EnvironmentsTab projectId={project.id} />
+                        </TabPanel> */}
+                        <TabPanel value="artifacts">
+                            <ArtifactsTab projectId={project.id} projectName={project.name} />
+                        </TabPanel>
+                    </TabContext>
                 </CardContent>
             </Card>
         </Grid>

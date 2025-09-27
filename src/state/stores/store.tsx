@@ -213,7 +213,8 @@ interface StoreState {
 
     fetchGlobalSettings: () => Promise<void>;
     fetchScans: () => Promise<void>;
-    fetchPipelines: (org: string) => Promise<BuildDefinition[]>;
+    fetchPipelines: (org: string, includePreviews?: boolean) => Promise<BuildDefinition[]>;
+    fetchPipelinesByOrgAndProject: (org: string, projectId: string) => Promise<BuildDefinition[]>;
     fetchBuilds: (org: string) => Promise<BuildRecord[]>;
     fetchResources: (org: string, type: string) => Promise<void>;
 
@@ -252,6 +253,8 @@ interface StoreState {
     deleteLogicContainer: (id: string) => Promise<void>;
 
     getProtectedResourcesByOrgTypeAndIdsSummary: (orgId: string, resourceType: string, resourceIds: string[]) => Promise<any[]>;
+
+    fetchProtectedResourcesByTypeOrgProject: (orgId: string, resourceType: string, projectId: string) => Promise<{ resources: any[], total: number }>;
 }
 
 const getDefaultDateFormat = () => {
@@ -426,13 +429,57 @@ const useStore = create<StoreState>((set) => ({
     },
     /**
      * Fetch pipelines (build_definitions) for a specific scanId
-     * @param {string} scanId - The ID of the scan to fetch pipelines for 
+     * @param {string} scanId - The ID of the scan to fetch pipelines for
+     * @param {boolean} includePreviews - Whether to include preview branches (default: true)
      */
-    fetchPipelines: async (scanId) => {
-
-        const allPipelines = await getAllRecords('build_definitions', 'byOrganisation', scanId)
+    fetchPipelines: async (scanId, includePreviews = true) => {
+        const allPipelines = await getAllRecords('build_definitions', 'byOrganisation', scanId);
         if (allPipelines.length === 0) {
             console.warn(`No pipelines found for scanId: ${scanId}`);
+            return;
+        }
+
+        if (!includePreviews) {
+            return allPipelines as BuildDefinition[];
+        }
+
+        // For each pipeline, fetch its preview branches from build_definitions_previews and re-attach as builds.preview
+        const result = [];
+        for (const pipeline of allPipelines) {
+            // Get all preview records for this pipeline
+            const previews = await getAllRecords('build_definitions_previews', 'byOrgAndDefinitionId', [scanId, pipeline.id]);
+            if (previews && previews.length > 0) {
+                // Reconstruct preview dict: { branch: previewObj, ... }
+                const previewDict = {};
+                for (const preview of previews) {
+                    const { branch, ...rest } = preview;
+                    previewDict[branch] = rest;
+                }
+                // Attach to builds.preview
+                result.push({
+                    ...pipeline,
+                    builds: {
+                        ...(pipeline.builds || {}),
+                        preview: previewDict
+                    }
+                });
+            } else {
+                result.push(pipeline);
+            }
+        }
+        return result as BuildDefinition[];
+    },
+
+    /**
+     * Fetch pipelines (build_definitions) for a specific orgId and projectId
+     * @param {string} orgId - The ID of the organisation to fetch pipelines for
+     * @param {string} projectId - The ID of the project to fetch pipelines for
+     */
+    fetchPipelinesByOrgAndProject: async (orgId, projectId) => {
+
+        const allPipelines = await getAllRecords('build_definitions', 'byOrgAndKProject', [orgId, projectId])
+        if (allPipelines.length === 0) {
+            console.warn(`No pipelines found for orgId: ${orgId} and projectId: ${projectId}`);
             return;
         }
         // console.log(`Fetched ${allPipelines.length} pipelines for scanId: ${scanId}`);
@@ -440,6 +487,7 @@ const useStore = create<StoreState>((set) => ({
         return allPipelines as BuildDefinition[];
 
     },
+
     /**
      * Fetch builds for a specific scanId
      * @param scanId - The ID of the scan to fetch builds for
@@ -456,6 +504,22 @@ const useStore = create<StoreState>((set) => ({
         return allBuilds as BuildRecord[];
 
     },
+
+    /**
+     * Fetch builds for a specific orgId and projectId
+     * @param orgId - The ID of the organisation to fetch builds for
+     * @param projectId - The ID of the project to fetch builds for
+     */
+    fetchBuildsByOrgAndProject: async (orgId, projectId) => {
+        const allBuilds = await getAllRecords('builds', 'byOrgAndKProject', [orgId, projectId]);
+        if (allBuilds.length === 0) {
+            console.warn(`No builds found for orgId: ${orgId} and projectId: ${projectId}`);
+            return;
+        }
+        return allBuilds as BuildRecord[];
+    },
+
+
     fetchResources: async (scanId: string, type: string) => {
         // console.log("Fetching resources for scanId:", scanId, "type:", type);    
 
@@ -471,7 +535,7 @@ const useStore = create<StoreState>((set) => ({
         }
 
         // check type against known resource types
-        const knownResourceTypes = ['endpoint', 'variablegroup', 'securefile', 'repository', 'pools', 'queue'];
+        const knownResourceTypes = ['endpoint', 'variablegroup', 'securefile', 'repository', 'pools', 'queue','deploymentgroups','environment'];
         // If type is known, fetch resources by type check for case insensitivity
         type = type.toLowerCase();
         if (knownResourceTypes.includes(type)) {
@@ -637,13 +701,35 @@ const useStore = create<StoreState>((set) => ({
             }
 
             // 5. Write build_definitions (compound key: [organisation.id, buildDefId])
+            // 5.1 if build_definition has a 'builds.preview' dict, write those to build_definitions_previews store
             if (Array.isArray(scanData.build_definitions) && scanData.organisation?.id) {
                 for (const buildDef of scanData.build_definitions) {
                     if (buildDef && typeof buildDef === 'object' && buildDef.id) {
+                        let buildDefToSave = { ...buildDef };
+                        if (buildDefToSave.builds && buildDefToSave.builds.preview && typeof buildDefToSave.builds.preview === 'object') {
+                            const previewDict = buildDefToSave.builds.preview;
+                            for (const [branch, previewObj] of Object.entries(previewDict)) {
+                                await addRecord('build_definitions_previews', {
+                                    organisation: scanData.organisation.id,
+                                    definitionId: buildDefToSave.id,
+                                    k_project: buildDefToSave.k_project,
+                                    branch,
+                                    ...previewObj
+                                });
+                            }
+                            // Remove preview from buildDef before saving
+                            buildDefToSave = {
+                                ...buildDefToSave,
+                                builds: {
+                                    ...buildDefToSave.builds,
+                                    preview: undefined
+                                }
+                            };
+                        }
                         await addRecord('build_definitions', {
                             organisation: scanData.organisation.id,
-                            id: buildDef.id,
-                            ...buildDef
+                            id: buildDefToSave.id,
+                            ...buildDefToSave
                         });
                     }
                 }
@@ -730,6 +816,53 @@ const useStore = create<StoreState>((set) => ({
                 }
             }
 
+
+            // 11. Write artifactsFeeds (compound key: [organisation, feedId])
+            // 11.1 Write each feeds packages to artifactsPackages (compound key: [organisation, feedId, id])
+            if (scanData.artifacts && scanData.organisation?.id) {
+                const orgId = scanData.organisation.id;
+                const feedsToStore = [];
+                if (Array.isArray(scanData.artifacts.active)) {
+                    for (const feed of scanData.artifacts.active) {
+                        if (feed && typeof feed === 'object' && feed.id) {
+                            // Save packages for this feed, and count them
+                            let packagesCount = 0;
+                            if (Array.isArray(feed.packages)) {
+                                packagesCount = feed.packages.length;
+                                for (const pkg of feed.packages) {
+                                    if (pkg && typeof pkg === 'object' && pkg.id) {
+                                        await addRecord('artifactsPackages', {
+                                            organisation: orgId,
+                                            feedId: feed.id,
+                                            ...pkg
+                                        });
+                                    }
+                                }
+                            }
+                            // Remove packages from feed before storing, add packagesCount
+                            const { packages, ...feedWithoutPackages } = feed;
+                            feedsToStore.push({ organisation: orgId, ...feedWithoutPackages, packagesCount });
+                        }
+                    }
+                }
+                if (Array.isArray(scanData.artifacts.recyclebin)) {
+                    for (const feed of scanData.artifacts.recyclebin) {
+                        if (feed && typeof feed === 'object' && feed.id) {
+                            // Remove packages from feed before storing, add packagesCount if present
+                            let packagesCount = 0;
+                            if (Array.isArray(feed.packages)) {
+                                packagesCount = feed.packages.length;
+                            }
+                            const { packages, ...feedWithoutPackages } = feed;
+                            feedsToStore.push({ organisation: orgId, ...feedWithoutPackages, packagesCount });
+                        }
+                    }
+                }
+                for (const feed of feedsToStore) {
+                    await addRecord('artifactsFeeds', feed);
+                }
+            }
+
             await useStore.getState().fetchScans();
         } catch (error) {
             console.error('Error adding scan:', error);
@@ -753,7 +886,9 @@ const useStore = create<StoreState>((set) => ({
                 { store: 'bot_accounts', index: 'byOrganisation', value: scanId },
                 { store: 'commits', index: 'byOrganisation', value: scanId },
                 { store: 'committer_stats', index: 'byOrganisation', value: scanId },
-                { store: 'repo_branches', index: 'byOrganisation', value: scanId }
+                { store: 'repo_branches', index: 'byOrganisation', value: scanId },
+                { store: 'artifactsFeeds', index: 'byOrganisation', value: scanId },
+                { store: 'artifactsPackages', index: 'byOrganisation', value: scanId },
             ];
             for (const { store, index, value } of indexDeletes) {
                 await deleteAllRecords(store, index, value);
@@ -798,16 +933,16 @@ const useStore = create<StoreState>((set) => ({
         let repos;
         // If page or pageSize is null/undefined/0, fetch all
         if (!page || !pageSize) {
-            repos = await getAllRecords('protected_resources', 'byResourceTypeAndOrgAndProject', ['repository', orgId, projectId]);
+            repos = await getAllRecords('protected_resources', 'byResourceTypeAndOrgAndKProject', ['repository', orgId, projectId]);
         } else {
             repos = await getPaginatedRecords('protected_resources', {
-                indexName: 'byResourceTypeAndOrgAndProject',
+                indexName: 'byResourceTypeAndOrgAndKProject',
                 value: ['repository', orgId, projectId],
                 offset: (page - 1) * pageSize,
                 limit: pageSize
             });
         }
-            const total = await getCount('protected_resources', 'byResourceTypeAndOrgAndProject', ['repository', orgId, projectId]);
+            const total = await getCount('protected_resources', 'byResourceTypeAndOrgAndKProject', ['repository', orgId, projectId]);
 
         // If includeBranches, fetch branches for each repo
         if (includeBranches) {
@@ -846,6 +981,12 @@ const useStore = create<StoreState>((set) => ({
         return filtered.length > 0 ? filtered : null;
     },
 
+    fetchCommitterStatsByProject: async (orgId, projectId) => {
+        const allStats = await getAllRecords('committer_stats');
+        const filtered = allStats.filter(s => s.organisation === orgId && s.projectId === projectId);
+        return filtered.length > 0 ? filtered : null;
+    },
+
     updateLogicContainer: async (logicContainerId: String, updated: LogicContainer) => {
         try {
             await updateRecord(
@@ -880,6 +1021,40 @@ const useStore = create<StoreState>((set) => ({
             console.error('Error deleting logic container:', error);
         }
     },
+
+    fetchProtectedResourcesByTypeOrgProject: async (orgId, resourceType, projectId) => {
+        const resources = await getAllRecords('protected_resources', 'byResourceTypeAndOrgAndKProject', [resourceType, orgId, projectId]);
+        const total = resources.length;
+        return { resources, total };
+    },
+
+    fetchEndpointsByOrgAndProject: async (orgId, projectId) => {
+        const resources = await getAllRecords('protected_resources', 'byOrgAndResourceType', [orgId, 'endpoint']);
+        // Filter for endpoints with k_project_refs containing an object with id === projectId
+        const filtered = resources.filter(r =>
+            Array.isArray(r.k_projects_refs) &&
+            r.k_projects_refs.some((ref: any) => ref && ref.id === projectId)
+        );
+        const total = filtered.length;
+        return { resources: filtered, total };
+    },
+
+    /**
+     * Fetch artifact feeds for a specific orgId and projectId
+     * @param {string} orgId - The ID of the organisation
+     * @param {string} projectId - The ID of the project
+     * @returns {Promise<any[]>} Array of artifact feeds
+     */
+    fetchArtifactsFeeds: async (orgId: string, projectId: string) => {
+        // Use the 'byOrgAndKProject' index on artifactsFeeds
+        const allFeeds = await getAllRecords('artifactsFeeds', 'byOrganisation', orgId);
+
+        // filter feeds that have k_project.id === projectId and where there is no k_project (org-wide feeds)
+        const filtered = allFeeds.filter(feed =>
+            !feed.k_project || (feed.k_project && feed.k_project.id === projectId)
+        );
+        return {feeds: filtered, total: filtered.length};
+    }
 
 }));
 

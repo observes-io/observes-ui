@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import {
     Card,
     CardContent,
@@ -21,7 +22,7 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import Tooltip from '@mui/material/Tooltip';
 import useStore from '../../state/stores/store';
 
-export default function CommitterCard({ committer }) {
+function CommitterCard({ committer }) {
 
     const { selectedScan, fetchCommits } = useStore();
     const [hoveredCommitId, setHoveredCommitId] = React.useState(null);
@@ -398,5 +399,33 @@ export default function CommitterCard({ committer }) {
         </Card>
     );
 }
+
+CommitterCard.propTypes = {
+    committer: PropTypes.shape({
+        committerEmail: PropTypes.string,
+        authorEmails: PropTypes.arrayOf(PropTypes.string),
+        pusherEmails: PropTypes.arrayOf(PropTypes.string),
+        commitCount: PropTypes.number,
+        projectCount: PropTypes.number,
+        repoCount: PropTypes.number,
+        usesBuildAccount: PropTypes.bool,
+        prs_merged: PropTypes.number,
+        totalChangeCounts: PropTypes.shape({
+            add: PropTypes.number,
+            edit: PropTypes.number,
+            delete: PropTypes.number
+        }),
+        projectStats: PropTypes.arrayOf(
+            PropTypes.shape({
+                projectId: PropTypes.string,
+                projectName: PropTypes.string,
+                repoCount: PropTypes.number,
+                commitCount: PropTypes.number
+            })
+        ),
+    })
+};
+
+export default CommitterCard;
 
 

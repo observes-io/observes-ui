@@ -13,15 +13,7 @@ import useStore from '../../state/stores/store';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import AutoModeIcon from '@mui/icons-material/AutoMode';
 import { OBSERVES_DB_NAME } from '../../utils/dbConfig';
-
-
-const resourceTypes = [
-  { value: 'endpoint', label: 'Service Connection', disabled: false },
-  { value: 'variablegroup', label: 'Variable Group', disabled: false },
-  { value: 'securefile', label: 'Secure Files', disabled: false },
-  { value: 'pool_merged', label: 'Agent Pools', disabled: false },
-  { value: 'repository', label: 'Repository', disabled: false }
-];
+import { resourceTypes } from '../../utils/resourceTypes';
 
 
 const Platform = ({ }) => {

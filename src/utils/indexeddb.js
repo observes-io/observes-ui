@@ -93,23 +93,137 @@ export async function initialPopulate({ dbName, createdStores }) {
 // Robust initialization for index DB and required stores
 export async function initIndexDb() {
   const dbName = OBSERVES_DB_NAME;
+  // Define required stores and their required indexes
   const requiredStores = [
-    { name: 'globalSettings', options: { keyPath: 'id' } },
-    { name: 'logiccontainers', options: { keyPath: 'id' } },
-    // New stores for normalized scan data with compound key [organisation, id]
-    { name: 'organisations', options: { keyPath: 'id' } },
-    { name: 'projects', options: { keyPath: ['organisation', 'id'], autoIncrement: false } },
-    { name: 'protected_resources', options: { keyPath: ['organisation', 'resourceType', 'id'], autoIncrement: false } },
-    { name: 'build_definitions', options: { keyPath: ['organisation', 'id'], autoIncrement: false } },
-    { name: 'builds', options: { keyPath: ['organisation', 'id'], autoIncrement: false } },
-    { name: 'stats', options: { keyPath: ['organisation', 'id'], autoIncrement: false, } },
-    // Optionally keep scanresults for legacy/transition
-    // { name: 'scanresults', options: { keyPath: 'id', autoIncrement: false } },
-    // New stores for commits and committer_stats
-    { name: 'commits', options: { keyPath: ['organisation', 'repositoryId', 'commitId'], autoIncrement: false } },
-    { name: 'committer_stats', options: { keyPath: ['organisation', 'committerEmail'], autoIncrement: false } },
-    { name: 'bot_accounts', options: { keyPath: ['organisation', 'id'], autoIncrement: false } },
-    { name: 'repo_branches', options: { keyPath: ['organisation', 'repoId', 'objectId'], autoIncrement: false } }
+    { name: 'globalSettings', options: { keyPath: 'id' }, indexes: [] },
+    { name: 'logiccontainers', options: { keyPath: 'id' }, indexes: [] },
+    {
+      name: 'organisations', options: { keyPath: 'id' }, indexes: [
+        { name: 'byName', keyPath: 'name', options: { unique: false } },
+        { name: 'byType', keyPath: 'type', options: { unique: false } },
+      ]
+    },
+    {
+      name: 'projects', options: { keyPath: ['organisation', 'id'], autoIncrement: false }, indexes: [
+        { name: 'byName', keyPath: 'name', options: { unique: false } },
+        { name: 'byState', keyPath: 'state', options: { unique: false } },
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+        { name: 'byKProjectId', keyPath: 'k_project.id', options: { unique: false } },
+        { name: 'byKProjectName', keyPath: 'k_project.name', options: { unique: false } },
+        { name: 'byOrgAndKProject', keyPath: ['organisation', 'k_project.id'], options: { unique: false } },
+        { name: 'byOrgAndKProjectName', keyPath: ['organisation', 'k_project.name'], options: { unique: false } },
+      ]
+    },
+    {
+      name: 'protected_resources', options: { keyPath: ['organisation', 'resourceType', 'id'], autoIncrement: false }, indexes: [
+        { name: 'byResourceType', keyPath: 'resourceType', options: { unique: false } },
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+        { name: 'byOrgAndResourceType', keyPath: ['organisation', 'resourceType'], options: { unique: false } },
+        { name: 'byKProjectId', keyPath: 'k_project.id', options: { unique: false } },
+        { name: 'byKProjectName', keyPath: 'k_project.name', options: { unique: false } },
+        { name: 'byOrgAndKProject', keyPath: ['organisation', 'k_project.id'], options: { unique: false } },
+        { name: 'byOrgAndType', keyPath: ['organisation', 'resourceType'], options: { unique: false } },
+        { name: 'byOrgAndKProjectName', keyPath: ['organisation', 'k_project.name'], options: { unique: false } },
+        { name: 'byResourceTypeAndOrgAndKProject', keyPath: ['resourceType', 'organisation', 'k_project.id'], options: { unique: false } },
+      ]
+    },
+    {
+      name: 'build_definitions', options: { keyPath: ['organisation', 'id'], autoIncrement: false }, indexes: [
+        { name: 'byName', keyPath: 'name', options: { unique: false } },
+        { name: 'byProjectId', keyPath: 'project.id', options: { unique: false } },
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+        { name: 'byKProjectId', keyPath: 'k_project.id', options: { unique: false } },
+        { name: 'byKProjectName', keyPath: 'k_project.name', options: { unique: false } },
+        { name: 'byOrgAndKProject', keyPath: ['organisation', 'k_project.id'], options: { unique: false } },
+        { name: 'byOrgAndKProjectName', keyPath: ['organisation', 'k_project.name'], options: { unique: false } },
+      ]
+    },
+    {
+      name: 'build_definitions_previews', options: { keyPath: ['organisation', 'definitionId', 'branch'], autoIncrement: false }, indexes: [
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+        { name: 'byDefinitionId', keyPath: 'definitionId', options: { unique: false } },
+        { name: 'byBranch', keyPath: 'branch', options: { unique: false } },
+        { name: 'byOrgAndDefinitionId', keyPath: ['organisation', 'definitionId'], options: { unique: false } },
+        { name: 'byOrgAndBranch', keyPath: ['organisation', 'branch'], options: { unique: false } },
+        { name: 'byDefinitionIdAndBranch', keyPath: ['definitionId', 'branch'], options: { unique: false } },
+        { name: 'byOrgAndDefIdAndBranch', keyPath: ['organisation', 'definitionId', 'branch'], options: { unique: false } },
+        { name: 'byKProjectId', keyPath: 'k_project.id', options: { unique: false } },
+        { name: 'byKProjectName', keyPath: 'k_project.name', options: { unique: false } },
+        { name: 'byOrgAndKProject', keyPath: ['organisation', 'k_project.id'], options: { unique: false } },
+        { name: 'byOrgAndKProjectName', keyPath: ['organisation', 'k_project.name'], options: { unique: false } },
+      ]
+    },
+    {
+      name: 'builds', options: { keyPath: ['organisation', 'id'], autoIncrement: false }, indexes: [
+        { name: 'byStatus', keyPath: 'status', options: { unique: false } },
+        { name: 'byResult', keyPath: 'result', options: { unique: false } },
+        { name: 'byProjectId', keyPath: 'project.id', options: { unique: false } },
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+        { name: 'byKProjectId', keyPath: 'k_project.id', options: { unique: false } },
+        { name: 'byKProjectName', keyPath: 'k_project.name', options: { unique: false } },
+        { name: 'byOrgAndKProject', keyPath: ['organisation', 'k_project.id'], options: { unique: false } },
+        { name: 'byOrgAndKProjectName', keyPath: ['organisation', 'k_project.name'], options: { unique: false } },
+      ]
+    },
+    {
+      name: 'stats', options: { keyPath: ['organisation', 'id'], autoIncrement: false }, indexes: [
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+      ]
+    },
+    {
+      name: 'commits', options: { keyPath: ['organisation', 'repositoryId', 'commitId'], autoIncrement: false }, indexes: [
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+        { name: 'byOrgAndKProject', keyPath: ['organisation', 'k_project.id'], options: { unique: false } },
+        { name: 'byOrgAndKProjectName', keyPath: ['organisation', 'k_project.name'], options: { unique: false } },
+        { name: 'byOrgAndCommitterEmail', keyPath: ['organisation', 'committerEmail'], options: { unique: false } },
+        { name: 'byOrgCommitterAuthorMatch', keyPath: ['organisation', 'committerAuthorMatch'], options: { unique: false } },
+        { name: 'byOrgCommitterPusherMatch', keyPath: ['organisation', 'committerPusherMatch'], options: { unique: false } },
+        { name: 'byOrgCommitByAdo', keyPath: ['organisation', 'commitByAdo'], options: { unique: false } },
+        { name: 'byOrgAndUserCommitterAuthorMatch', keyPath: ['organisation', 'committerEmail', 'committerAuthorMatch'], options: { unique: false } },
+        { name: 'byOrgAndUserCommitterPusherMatch', keyPath: ['organisation', 'committerEmail', 'committerPusherMatch'], options: { unique: false } },
+        { name: 'byOrgAndUserCommitByAdo', keyPath: ['organisation', 'committerEmail', 'commitByAdo'], options: { unique: false } },
+      ]
+    },
+    {
+      name: 'committer_stats', options: { keyPath: ['organisation', 'committerEmail'], autoIncrement: false }, indexes: [
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+        { name: 'byOrgAndCommitterEmail', keyPath: ['organisation', 'committerEmail'], options: { unique: false } },
+        { name: 'byOrgAndHasMultipleAuthors', keyPath: ['organisation', 'hasMultipleAuthors'], options: { unique: false } },
+        { name: 'byOrgAndHasMultiplePushers', keyPath: ['organisation', 'hasMultiplePushers'], options: { unique: false } },
+        { name: 'byOrgAndUsesBuildServiceAccount', keyPath: ['organisation', 'usesBuildServiceAccount'], options: { unique: false } },
+        { name: 'byOrgAuthorsPushersBuildService', keyPath: ['organisation', 'hasMultipleAuthors', 'hasMultiplePushers', 'usesBuildServiceAccount'], options: { unique: false } },
+      ]
+    },
+    {
+      name: 'bot_accounts', options: { keyPath: ['organisation', 'id'], autoIncrement: false }, indexes: [
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+        { name: 'byRemoveFromPusherEmails', keyPath: 'removeFromPusherEmails', options: { unique: false } },
+      ]
+    },
+    {
+      name: 'repo_branches', options: { keyPath: ['organisation', 'repoId', 'objectId'], autoIncrement: false }, indexes: [
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+        { name: 'byOrgAndRepoId', keyPath: ['organisation', 'repoId'], options: { unique: false } },
+      ]
+    },
+    {
+      name: 'artifactsFeeds', options: { keyPath: ['organisation', 'id'], autoIncrement: false }, indexes: [
+        { name: 'byProjectId', keyPath: 'project.id', options: { unique: false } },
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+        { name: 'byKProjectId', keyPath: 'k_project.id', options: { unique: false } },
+        { name: 'byKProjectName', keyPath: 'k_project.name', options: { unique: false } },
+        { name: 'byOrgAndKProject', keyPath: ['organisation', 'k_project.id'], options: { unique: false } },
+        { name: 'byOrgAndKProjectName', keyPath: ['organisation', 'k_project.name'], options: { unique: false } },
+      ]
+    },
+    {
+      name: 'artifactsPackages', options: { keyPath: ['organisation', 'feedId', 'id'], autoIncrement: false }, indexes: [
+        { name: 'byOrganisation', keyPath: 'organisation', options: { unique: false } },
+        { name: 'byFeedId', keyPath: 'feedId', options: { unique: false } },
+        { name: 'byId', keyPath: 'id', options: { unique: false } },
+        { name: 'byOrgAndFeedId', keyPath: ['organisation', 'feedId'], options: { unique: false } },
+      ]
+    }
   ];
 
   // Open DB to check existence and current version
@@ -122,111 +236,63 @@ export async function initIndexDb() {
       openRequest.onerror = (e) => reject(e.target.error);
     });
     version = db.version;
-    db.close();
   } catch {
     version = 1;
+    db = null;
   }
 
-  // Check for missing stores
-  const openRequest2 = indexedDB.open(dbName, version);
-  db = await new Promise((resolve, reject) => {
-    openRequest2.onsuccess = (event) => resolve(event.target.result);
-    openRequest2.onerror = (e) => reject(e.target.error);
-  });
-  const missingStores = requiredStores.filter(store => !db.objectStoreNames.contains(store.name));
-  db.close();
+  // Check for missing stores and missing indexes
+  let missingStores = [];
+  let missingIndexes = {};
+  if (db) {
+    for (const store of requiredStores) {
+      if (!db.objectStoreNames.contains(store.name)) {
+        missingStores.push(store);
+      } else if (store.indexes && store.indexes.length > 0) {
+        // Check for missing indexes
+        const tx = db.transaction(store.name, 'readonly');
+        const objectStore = tx.objectStore(store.name);
+        const existingIndexes = Array.from(objectStore.indexNames);
+        for (const idx of store.indexes) {
+          if (!existingIndexes.includes(idx.name)) {
+            if (!missingIndexes[store.name]) missingIndexes[store.name] = [];
+            missingIndexes[store.name].push(idx);
+          }
+        }
+      }
+    }
+    db.close();
+  } else {
+    // DB does not exist yet, all stores are missing
+    missingStores = requiredStores;
+  }
 
-  if (missingStores.length > 0) {
-    // Bump version and create missing stores
+  const needsUpgrade = missingStores.length > 0 || Object.keys(missingIndexes).length > 0;
+  if (needsUpgrade) {
     const newVersion = version + 1;
     const upgradeRequest = indexedDB.open(dbName, newVersion);
-    let createdStores = missingStores.map(store => store.name);
     upgradeRequest.onupgradeneeded = (event) => {
       const db2 = event.target.result;
+      // Create missing stores
       for (const store of missingStores) {
         if (!db2.objectStoreNames.contains(store.name)) {
           const objectStore = db2.createObjectStore(store.name, store.options);
-          // Add indexes for each store
-          switch (store.name) {
-            case 'organisations':
-              objectStore.createIndex('byName', 'name', { unique: false });
-              objectStore.createIndex('byType', 'type', { unique: false });
-              break;
-            case 'projects':
-              objectStore.createIndex('byName', 'name', { unique: false });
-              objectStore.createIndex('byState', 'state', { unique: false });
-              objectStore.createIndex('byOrganisation', 'organisation', { unique: false });
-              objectStore.createIndex('byKProjectId', 'k_project.id', { unique: false });
-              objectStore.createIndex('byKProjectName', 'k_project.name', { unique: false });
-              objectStore.createIndex('byOrgAndKProject', ['organisation', 'k_project.id'], { unique: false });
-              objectStore.createIndex('byOrgAndKProjectName', ['organisation', 'k_project.name'], { unique: false });
-              break;
-            case 'protected_resources':
-              objectStore.createIndex('byResourceType', 'resourceType', { unique: false });
-              objectStore.createIndex('byOrganisation', 'organisation', { unique: false });
-              objectStore.createIndex('byKProjectId', 'k_project.id', { unique: false });
-              objectStore.createIndex('byKProjectName', 'k_project.name', { unique: false });
-              objectStore.createIndex('byOrgAndKProject', ['organisation', 'k_project.id'], { unique: false });
-              objectStore.createIndex('byOrgAndType', ['organisation', 'resourceType'], { unique: false });
-              objectStore.createIndex('byOrgAndKProjectName', ['organisation', 'k_project.name'], { unique: false });
-              objectStore.createIndex('byResourceTypeAndOrgAndProject', ['resourceType', 'organisation', 'project.id'], { unique: false });
-              break;
-            case 'build_definitions':
-              objectStore.createIndex('byName', 'name', { unique: false });
-              objectStore.createIndex('byProjectId', 'project.id', { unique: false });
-              objectStore.createIndex('byOrganisation', 'organisation', { unique: false });
-              objectStore.createIndex('byKProjectId', 'k_project.id', { unique: false });
-              objectStore.createIndex('byKProjectName', 'k_project.name', { unique: false });
-              objectStore.createIndex('byOrgAndKProject', ['organisation', 'k_project.id'], { unique: false });
-              objectStore.createIndex('byOrgAndKProjectName', ['organisation', 'k_project.name'], { unique: false });
-              break;
-            case 'builds':
-              objectStore.createIndex('byStatus', 'status', { unique: false });
-              objectStore.createIndex('byResult', 'result', { unique: false });
-              objectStore.createIndex('byProjectId', 'project.id', { unique: false });
-              objectStore.createIndex('byOrganisation', 'organisation', { unique: false });
-              objectStore.createIndex('byKProjectId', 'k_project.id', { unique: false });
-              objectStore.createIndex('byKProjectName', 'k_project.name', { unique: false });
-              objectStore.createIndex('byOrgAndKProject', ['organisation', 'k_project.id'], { unique: false });
-              objectStore.createIndex('byOrgAndKProjectName', ['organisation', 'k_project.name'], { unique: false });
-              break;
-            case 'stats':
-              objectStore.createIndex('byOrganisation', 'organisation', { unique: false });
-              break;
-            case 'commits':
-              objectStore.createIndex('byOrganisation', 'organisation', { unique: false });
-              objectStore.createIndex('byOrgAndKProject', ['organisation', 'k_project.id'], { unique: false });
-              objectStore.createIndex('byOrgAndKProjectName', ['organisation', 'k_project.name'], { unique: false });
-              objectStore.createIndex('byOrgAndCommitterEmail', ['organisation', 'committerEmail'], { unique: false });
-              objectStore.createIndex('byOrgCommitterAuthorMatch', ['organisation', 'committerAuthorMatch'], { unique: false });
-              objectStore.createIndex('byOrgCommitterPusherMatch', ['organisation', 'committerPusherMatch'], { unique: false });
-              objectStore.createIndex('byOrgCommitByAdo', ['organisation', 'commitByAdo'], { unique: false });
-              objectStore.createIndex('byOrgAndUserCommitterAuthorMatch', ['organisation', 'committerEmail', 'committerAuthorMatch'], { unique: false });
-              objectStore.createIndex('byOrgAndUserCommitterPusherMatch', ['organisation', 'committerEmail', 'committerPusherMatch'], { unique: false });
-              objectStore.createIndex('byOrgAndUserCommitByAdo', ['organisation', 'committerEmail', 'commitByAdo'], { unique: false });
-              break;
-            case 'bot_accounts':
-              objectStore.createIndex('byOrganisation', 'organisation', { unique: false });
-              objectStore.createIndex('byRemoveFromPusherEmails', 'removeFromPusherEmails', { unique: false });
-              break;
-            case 'committer_stats':
-              objectStore.createIndex('byOrganisation', 'organisation', { unique: false });
-              objectStore.createIndex('byOrgAndCommitterEmail', ['organisation', 'committerEmail'], { unique: false });
-              // Index does not support a contains lookup only exact match.
-              // objectStore.createIndex('byOrgAndAuthorEmails', ['organisation', 'authorEmails'], { unique: false });
-              // objectStore.createIndex('byOrgAndPusherEmails', ['organisation', 'pusherEmails'], { unique: false });
-              objectStore.createIndex('byOrgAndHasMultipleAuthors', ['organisation', 'hasMultipleAuthors'], { unique: false });
-              objectStore.createIndex('byOrgAndHasMultiplePushers', ['organisation', 'hasMultiplePushers'], { unique: false });
-              objectStore.createIndex('byOrgAndUsesBuildServiceAccount', ['organisation', 'usesBuildServiceAccount'], { unique: false });
-              objectStore.createIndex('byOrgAuthorsPushersBuildService', ['organisation', 'hasMultipleAuthors', 'hasMultiplePushers', 'usesBuildServiceAccount'], { unique: false });
-
-              break;
-            case 'repo_branches':
-              objectStore.createIndex('byOrganisation', 'organisation', { unique: false });
-              objectStore.createIndex('byOrgAndRepoId', ['organisation', 'repoId'], { unique: false });
-              break;
-            default:
-              break;
+          if (store.indexes && store.indexes.length > 0) {
+            for (const idx of store.indexes) {
+              objectStore.createIndex(idx.name, idx.keyPath, idx.options);
+            }
+          }
+        }
+      }
+      // Add missing indexes to existing stores
+      for (const storeName in missingIndexes) {
+        if (db2.objectStoreNames.contains(storeName)) {
+          // Use the versionchange transaction to access existing stores
+          const objectStore = event.target.transaction.objectStore(storeName);
+          for (const idx of missingIndexes[storeName]) {
+            if (!objectStore.indexNames.contains(idx.name)) {
+              objectStore.createIndex(idx.name, idx.keyPath, idx.options);
+            }
           }
         }
       }
@@ -236,8 +302,15 @@ export async function initIndexDb() {
       upgradeRequest.onerror = (e) => reject(e.target.error);
     });
     // Populate initial data for new stores
-    await initialPopulate({ dbName, createdStores });
+    const createdStores = missingStores.map(store => store.name);
+    if (createdStores.length > 0) {
+      await initialPopulate({ dbName, createdStores });
+      return true;
+    }
+    // Only indexes were added, not stores
+    return false;
   }
+  return false;
 }
 
 // Generic IndexedDB helpers for CRUD operations

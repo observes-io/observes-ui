@@ -33,6 +33,7 @@ import FolderIcon from '@mui/icons-material/Folder';
 import FingerprintIcon from '@mui/icons-material/Fingerprint';
 import KeyIcon from '@mui/icons-material/Key';
 import MailLockIcon from '@mui/icons-material/MailLock';
+import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 import PipelineDetail from './PipelineDetail';
 
 
@@ -283,6 +284,8 @@ const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filtered
                                                                         return <KeyIcon fontSize="small" />;
                                                                     case 'securefile':
                                                                         return <MailLockIcon fontSize="small" />;
+                                                                    case 'environment':
+                                                                        return <TrackChangesIcon fontSize="small" />;
                                                                     default:
                                                                         return <ErrorOutline fontSize="small" />;
                                                                 }

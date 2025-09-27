@@ -193,7 +193,6 @@ export default function Header({ onMenuItemClick }) {
                     }}
                   />
                 </MenuItem>,
-                
                 scan.projectRefs.map((project) => (
                   <MenuItem
                     key={project.id}

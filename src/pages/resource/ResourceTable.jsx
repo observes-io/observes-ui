@@ -5,15 +5,8 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import useStore from '../../state/stores/store';
+import { resourceTypes } from '../../utils/resourceTypes';
 
-
-const resourceTypes = [
-  { value: 'endpoint', label: 'Service Connection', disabled: false },
-  { value: 'variablegroup', label: 'Variable Group', disabled: false },
-  { value: 'securefile', label: 'Secure Files', disabled: false },
-  { value: 'pool_merged', label: 'Agent Pools', disabled: false },
-  { value: 'repository', label: 'Repository', disabled: false }
-];
 
 const ResourceTable = ({ selectedType, filteredProtectedResources, logicContainers, projects, filterFocus, filteredBadge, onLogicContainerChange }) => {
 
@@ -107,6 +100,18 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
             <TableCell sx={{ overflow: 'hidden', textAlign: 'center' }}>PBAC</TableCell>
           </>
         );
+      case 'environment':
+        return (
+          <>
+            <TableCell sx={{ overflow: 'hidden', textAlign: 'center' }}>Name</TableCell>
+            <TableCell sx={{ overflow: 'hidden', textAlign: 'center' }}>Logic Containers</TableCell>
+            <TableCell sx={{ overflow: 'hidden', textAlign: 'center' }}>Targets</TableCell>
+            <TableCell sx={{ overflow: 'hidden', textAlign: 'center' }}>Created By</TableCell>
+            {/* <TableCell sx={{ overflow: 'hidden', textAlign: 'center' }}>Creation Date</TableCell> */}
+            <TableCell sx={{ overflow: 'hidden', textAlign: 'center' }}>Project</TableCell>
+            <TableCell sx={{ overflow: 'hidden', textAlign: 'center' }}>PBAC</TableCell>
+          </>
+        );
       case 'repository':
         return (
           <>
@@ -142,7 +147,6 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
   const renderLogicContainerCell = (resource) => {
     const resource_logicContainers = getLogicContainersForResource(resource.id, logicContainers);
     return resource_logicContainers.length ? (
-
       <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', alignContent: 'center', justifyContent: 'center' }}>
         {resource_logicContainers.map((logicContainer) => {
           return logicContainer ? (
@@ -337,6 +341,59 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
               </TableCell>
             </TableRow>
           );
+
+        case 'environment':
+          return (
+            <TableRow key={resource.id}>
+              <TableCell sx={{ overflow: 'hidden' }}>
+                <a href={resource?.k_url || '#'} target="_blank" rel="noopener noreferrer">
+                  {resource?.name || 'Missing Name'}
+                </a>
+              </TableCell>
+              <TableCell sx={{ overflow: 'hidden' }}>
+                {renderLogicContainerCell(resource)}
+              </TableCell>
+              <TableCell sx={{ overflow: 'hidden' }}>
+                {Array.isArray(resource.resources) && resource.resources.length > 0 && (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1, justifyContent: 'center' }}>
+                    {resource.resources.map((res) => (
+                      <Tooltip key={res.id} title={res.tags ? res.tags.join(', ') : ''}>
+                        <Box
+                          sx={{
+                            backgroundColor: '#a259e2',
+                            color: 'white',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            fontSize: '0.85em',
+                            fontWeight: 500,
+                            margin: '2px',
+                            display: 'inline-block',
+                            whiteSpace: 'nowrap',
+                            textOverflow: 'ellipsis',
+                            overflow: 'hidden',
+                            maxWidth: 120,
+                          }}
+                        >
+                          {res.name}
+                        </Box>
+                      </Tooltip>
+                    ))}
+                  </Box>
+                )}
+              </TableCell>
+              <TableCell sx={{ overflow: 'hidden' }}>{resource?.createdByName || resource?.createdBy?.displayName || 'Unknown'}</TableCell>
+              {/* <TableCell sx={{ overflow: 'hidden' }}>{resource?.createdOn ? new Date(resource.createdOn).toLocaleDateString() : resource?.creationDate ? new Date(resource.creationDate).toLocaleDateString() : "?"}</TableCell> */}
+              <TableCell sx={{ overflow: 'hidden' }}>
+                <ProjectListCell projects={resource?.k_projects || [resource.k_project]} />
+              </TableCell>
+              <TableCell sx={{ overflow: 'hidden', textAlign: 'center' }}>
+                {Array.isArray(resource?.pipelinepermissions)
+                  ? [...new Set(resource.pipelinepermissions)].length
+                  : ''}
+              </TableCell>
+            </TableRow>
+          );
+
         case 'repository':
           return (
             <TableRow key={resource.id}>

@@ -155,6 +155,28 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             foundProjects = projects?.filter(project => project.id === resource.projectId || project.id === resource.k_project?.id);
         }
 
+        if (resourceType === "environment") {
+            return {
+                id: resourceType + "_" + (resource?.id?.toString()) || resourceType + "_" + resourceType + "_unknownid_" + (index.toString()),
+                name: resource?.name || "No name available",
+                description: resource.description || "Environment in project " + (foundProjects?.map(project => project.name).join(", ") || resource.projectId),
+                projects: foundProjects ? foundProjects : [resource.projectId] || "No project info available",
+                type: "Environment",
+                checks: groupChecksByType(checks || []),
+                group: "protected_resource",
+                pipelinepermissions: resource.pipelinepermissions,
+                radius: 10,
+                label: resource?.name || "CI/CD Resource",
+                url: resource?.k_url || resource?.url,
+                createdBy: resource.createdBy,
+                createdOn: resource.createdOn,
+                lastModifiedBy: resource.lastModifiedBy,
+                lastModifiedOn: resource.lastModifiedOn,
+                protectedState: resource.protectedState,
+                resources: resource.resources,
+            };
+        }
+
 
         if (resourceType === "pool_merged") {
             return {
@@ -251,7 +273,6 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
 
         filteredProtectedResources.forEach((protected_resource, index) => {
 
-
             const resourceNode = create_resource_node(protected_resource, index, selectedType, protected_resource.checks, logic_containers);
             if (resourceNode === undefined) {
                 return;
@@ -262,6 +283,31 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             function getLogicContainersForResource(resourceId, logicContainers) {
                 return logicContainers
                     .filter(container => Array.isArray(container.resources) && container.resources.includes(resourceId))
+            }
+
+            if (selectedType === "environment") {
+                // Create a node for each resource in the environment's resources array
+                resourceNode.resources.forEach(target => {
+                    data.nodes.push({
+                        id: `resource_${target.id}`,
+                        name: target.name ? target.name.charAt(0).toUpperCase() + target.name.slice(1) : "No name available",
+                        group: "environment_resource",
+                        type: target.type || "Resource",
+                        radius: 9,
+                        projects: resourceNode.projects || ["No project info available"],
+                        description: target.description || `Resource in environment ${resourceNode.name}`,
+                        tags: target.tags || [],
+                        label: target.name || "Resource",
+                        parentEnvironmentId: resourceNode.id,
+                    });
+
+                    data.links.push({
+                        source: resourceNode.id,
+                        target: `resource_${target.id}`,
+                        value: 1
+                    });
+
+                });
             }
 
             const logicContainersForResource = getLogicContainersForResource(protected_resource.id, logic_containers);
@@ -281,48 +327,8 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             }
 
 
-            // Connect to PROJECTS - maybe not - too confusing
-            // protected_resource.k_projects.forEach(project => {
-            // data.links.push({
-            //     source: resourceNode.id,
-            //     target: `project_${project.id}`,
-            //     value: 2
-            //     });
-            // });
-
-            // Connect to Pipeline Definitions direct - will be created next - trying to connect the reverse way
-            // protected_resource.pipelinepermissions.forEach(pipelinedefinition_permissioned => {
-            // data.links.push({
-            //     source: resourceNode.id,
-            //     target: `pipeline_${pipelinedefinition_permissioned}`,
-            //     value: 2
-            //     });
-            // });
-
         });
 
-        // CREATE project nodes
-
-        // OPTIONS @TODO:
-        //   [ ] Show ALL project nodes or 
-        //   [ ] ONLY the SELECTED PROJECT
-        //   [ ] Projects that are within a FILTERED resource
-        //   [ ] Show projects by colouring
-        //   [X] Not show at all!
-
-        // projects.forEach(project => {
-        //     let projectNode = {
-        //         id: `project_${project.id}`,
-        //         name: project.name,
-        //         description: `Project ${project.description}`,
-        //         group: "project",
-        //         type: "Project",
-        //         radius: 5,
-        //         label: project.name,
-        //         projects: [project.name],
-        //     }
-        //     data.nodes.push(projectNode);
-        // })
 
         // CREATE PIPELINE NODES
 
@@ -370,12 +376,10 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                 }
 
             }
-
+            const future_build_ids = pipeline_value.builds && pipeline_value.builds.preview ? pipeline_value.builds.preview : {};
 
             // CREATE BUILDS NODES
             // Preview/Future BUILDS
-            const future_build_ids = pipeline_value.builds.preview;
-
 
             Object.entries(future_build_ids).forEach(([branch, build]) => {
                 const potentialBuildYamlNode = {
@@ -516,6 +520,8 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             .force("x", d3.forceX())
             .force("y", d3.forceY((d) => {
                 switch (d.group) {
+                    case "environment_resource":
+                        return -170;
                     case "logic_container":
                         return -100;
                     case "project":
@@ -1026,7 +1032,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                                 <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center", width: "100%" }}>
                                     <Typography sx={{ userSelect: "text", mr: 2 }} variant="h6">{alert.engine}</Typography>
                                     <Typography sx={{ userSelect: "text", mr: 2 }} variant="body2" color="text.secondary">
-                                       {/* Scope: {alert.scope === "potential_pipeline_execution_yaml" ? "Potential Execution" : "Execution"} */}
+                                        {/* Scope: {alert.scope === "potential_pipeline_execution_yaml" ? "Potential Execution" : "Execution"} */}
                                     </Typography>
                                     <Chip
                                         label={`${alert.results.length} result${alert.results.length !== 1 ? "s" : ""}`}

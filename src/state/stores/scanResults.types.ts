@@ -32,6 +32,7 @@ export interface OrganisationResourceCounts {
   repository: number;
   pipelines: number;
   builds: number;
+  environment: number;
 }
 
 export interface ProjectStats {
@@ -81,6 +82,7 @@ export interface ResourceCounts {
   variablegroup: number;
   securefile: number;
   queue: number;
+  environment: number;
 }
 
 export interface ProjectRecord {

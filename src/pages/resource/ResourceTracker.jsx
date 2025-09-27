@@ -17,14 +17,7 @@ import IconButton from '@mui/material/IconButton';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import { set } from 'react-hook-form';
-
-const resourceTypes = [
-    { value: 'endpoint', label: 'Service Connection', disabled: false },
-    { value: 'variablegroup', label: 'Variable Group', disabled: false },
-    { value: 'securefile', label: 'Secure Files', disabled: false },
-    { value: 'pool_merged', label: 'Agent Pools', disabled: false },
-    { value: 'repository', label: 'Repository', disabled: false }
-];
+import { resourceTypes } from '../../utils/resourceTypes';
 
 const ResourceTracker = () => {
 
@@ -36,6 +29,8 @@ const ResourceTracker = () => {
     const [repositories, setRepositories] = useState([]);
     const [pools, setPools] = useState([]);
     const [secureFiles, setSecureFiles] = useState([]);
+    const [environments, setEnvironments] = useState([]);
+    const [deploymentGroups, setDeploymentGroups] = useState([]);
     const [builds, setBuilds] = useState([]);
     const [pipelines, setPipelines] = useState([]);
 
@@ -157,6 +152,15 @@ const ResourceTracker = () => {
                         setVariableGroups([]);
                         setRepositories([]);
                         setPools([]);
+                        break;
+                    case 'environment':
+                        fetchResources(selectedScan.id, 'environment').then(setEnvironments);
+                        fetchResources(selectedScan.id, 'deploymentgroups').then(setDeploymentGroups);
+                        setEndpoints([]);
+                        setVariableGroups([]);
+                        setRepositories([]);
+                        setPools([]);
+                        setSecureFiles([]);
                         break;
                     default:
                         setEndpoints([]);
@@ -443,6 +447,11 @@ const ResourceTracker = () => {
         case 'securefile':
             filteredProtectedResources = secureFiles;
             break;
+        case 'environment':
+            filteredProtectedResources = environments;
+            // if i want to drill into deployment groups as well
+            // filteredProtectedResources = [...environments, ...deploymentGroups];
+            break;
         default:
             break;
     }
@@ -570,8 +579,8 @@ const ResourceTracker = () => {
     if (filterForPipelineType) {
         if (filterForPipelineType !== "all") {
             filteredPipelines = Object.values(filteredPipelines).filter(pipeline => {
-                console.log(pipeline);
-                console.log(filterForPipelineType);
+                // console.log(pipeline);
+                // console.log(filterForPipelineType);
                 if (!pipeline.process?.type || pipeline.process.type != filterForPipelineType) {
                     return false;
                 }
@@ -622,7 +631,6 @@ const ResourceTracker = () => {
                     let result = false;
                     switch (filter.field) {
                         case 'stageName':
-
                             result = stage.stage && stage.stage.toLowerCase().includes(filter.value.toLowerCase());
                             break;
                         case 'stagePool':

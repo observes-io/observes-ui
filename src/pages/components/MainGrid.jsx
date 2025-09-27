@@ -50,6 +50,48 @@ export default function MainGrid({ platformType, scans, onScanSelect }) {
   
   const { selectedScan, addScan, deleteScan, projects, fetchProjects, fetchCommitterStats } = useStore();
 
+  // Modal state for upload warning
+  const [showUploadWarning, setShowUploadWarning] = useState(false);
+  const [dontAskAgain, setDontAskAgain] = useState(false);
+  const [pendingFile, setPendingFile] = useState(null);
+
+  // File upload handler function
+  const handleFileUpload = async (file, inputEl) => {
+    if (!file) {
+      if (inputEl) inputEl.value = "";
+      return;
+    }
+    try {
+      const text = await file.text();
+      let data;
+      try {
+        data = coerceToScanResults(JSON.parse(text));
+      } catch (err) {
+        alert('Invalid scan file: ' + err.message);
+        if (inputEl) inputEl.value = "";
+        return;
+      }
+      await addScan({
+        id: data.id,
+        scan: {start: data.scan_start, end: data.scan_end},
+        organisation: data.organisation,
+        projects: data.projects,
+        protected_resources: data.protected_resources,
+        build_definitions: data.build_definitions,
+        builds: data.builds,
+        stats: data.stats || {},
+        commits: data.commits || [],
+        committer_stats: data.committer_stats || {},
+        build_service_accounts: data.build_service_accounts || [],
+        artifacts: data.artifacts || [],
+      });
+      window.location.reload();
+    } catch (err) {
+      alert('Failed to import scan: ' + err);
+      if (inputEl) inputEl.value = "";
+    }
+  };
+
   // Toggle state for committers filtering
   const [usesBuildServiceAccount, setUsesBuildServiceAccount] = useState(undefined); // undefined means 'all'
   const [hasMultipleAuthors, setHasMultipleAuthors] = useState(undefined);
@@ -312,35 +354,87 @@ export default function MainGrid({ platformType, scans, onScanSelect }) {
           placeholder="Upload organization scan JSON file"
           onChange={async e => {
             const file = e.target.files[0];
-            if (!file) return;
-            try {
-              const text = await file.text();
-              let data;
-              try {
-                data = coerceToScanResults(JSON.parse(text));
-              } catch (err) {
-                alert('Invalid scan file: ' + err.message);
-                return;
-              }
-              await addScan({
-                id: data.id,
-                scan: {start: data.scan_start, end: data.scan_end},
-                organisation: data.organisation,
-                projects: data.projects,
-                protected_resources: data.protected_resources,
-                build_definitions: data.build_definitions,
-                builds: data.builds,
-                stats: data.stats || {},
-                commits: data.commits || [],
-                committer_stats: data.committer_stats || {},
-                build_service_accounts: data.build_service_accounts || [],
-              });
-              window.location.reload();
-            } catch (err) {
-              alert('Failed to import scan: ' + err);
+            if (!file) {
+              e.target.value = "";
+              return;
             }
+            // Check localStorage for 'dontAskAgainUploadWarning'
+            if (localStorage.getItem('dontAskAgainUploadWarning') === 'true') {
+              await handleFileUpload(file, e.target);
+              return;
+            }
+            setPendingFile({ file, input: e.target });
+            setShowUploadWarning(true);
           }}
         />
+
+        {showUploadWarning && (
+          <Box
+            sx={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              bgcolor: 'rgba(0,0,0,0.3)',
+              zIndex: 9999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Card sx={{ minWidth: 350, maxWidth: 400, p: 3, boxShadow: 6 }}>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                ⚠️ Before uploading, please make sure you have the appropriate approvals.
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                If you're working in an enterprise environment, ensure you follow internal processes before proceeding.<br /><br />
+                This is a client-side only version of Observes. Your data is processed locally in your browser and not sent to any server. Still, it's better to keep out of trouble.
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <input
+                  type="checkbox"
+                  id="dont-ask-again-upload"
+                  checked={dontAskAgain}
+                  onChange={e => setDontAskAgain(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="dont-ask-again-upload" style={{ fontSize: '0.95em' }}>
+                  Don't ask again
+                </label>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={async () => {
+                    if (dontAskAgain) {
+                      localStorage.setItem('dontAskAgainUploadWarning', 'true');
+                    }
+                    setShowUploadWarning(false);
+                    if (pendingFile?.file && pendingFile?.input) {
+                      await handleFileUpload(pendingFile.file, pendingFile.input);
+                    }
+                    setPendingFile(null);
+                  }}
+                >
+                  Continue
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  onClick={() => {
+                    setShowUploadWarning(false);
+                    if (pendingFile?.input) pendingFile.input.value = "";
+                    setPendingFile(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </Box>
+            </Card>
+          </Box>
+        )}
 
         {scans.length !== 0 && (
           <span>
@@ -764,6 +858,7 @@ export default function MainGrid({ platformType, scans, onScanSelect }) {
                         commits: data.commits || [],
                         committer_stats: data.committer_stats || {},
                         build_service_accounts: data.build_service_accounts || [],
+                        artifacts: data.artifacts || [],
                       });
 
                       window.location.reload();
