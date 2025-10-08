@@ -1,3 +1,12 @@
+/* Copyright Notice
+SPDX-FileCopyrightText: 2025 Observes io LTD
+SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
+Copyright (c) 2025 Observes io LTD, Scotland, Company No. SC864704
+Licensed under PolyForm Internal Use 1.0.0, see LICENSE or https://polyformproject.org/licenses/internal-use/1.0.0
+Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
+*/
+
 import React, { useState, useEffect } from "react";
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import { Box, Badge, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, TablePagination, Tooltip } from "@mui/material";
@@ -18,6 +27,14 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
 
   if (!filteredProtectedResources) {
     return null; // or some loading indicator
+  /* Copyright Notice
+  SPDX-FileCopyrightText: 2025 Observes io LTD
+  SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
+  Copyright (c) 2025 Observes io LTD, Scotland, Company No. SC864704
+  Licensed under PolyForm Internal Use 1.0.0, see LICENSE or https://polyformproject.org/licenses/internal-use/1.0.0
+  Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
+  */
   }
 
   useEffect(() => {

@@ -1,3 +1,12 @@
+/* Copyright Notice
+SPDX-FileCopyrightText: 2025 Observes io LTD
+SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
+Copyright (c) 2025 Observes io LTD, Scotland, Company No. SC864704
+Licensed under PolyForm Internal Use 1.0.0, see LICENSE or https://polyformproject.org/licenses/internal-use/1.0.0
+Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
+*/
+
 import React, { useState, useEffect } from 'react';
 import ResourceTable from './ResourceTable';
 import PipelineTable from './PipelineTable';
@@ -169,6 +178,14 @@ const ResourceTracker = () => {
                         setPools([]);
                         setSecureFiles([]);
                         break;
+                /* Copyright Notice
+                SPDX-FileCopyrightText: 2025 Observes io LTD
+                SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
+                Copyright (c) 2025 Observes io LTD, Scotland, Company No. SC864704
+                Licensed under PolyForm Internal Use 1.0.0, see LICENSE or https://polyformproject.org/licenses/internal-use/1.0.0
+                Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
+                */
                 }
                 fetchBuilds(selectedScan.id).then(setBuilds);
                 fetchPipelines(selectedScan.id).then(setPipelines);

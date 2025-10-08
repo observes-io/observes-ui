@@ -1,3 +1,12 @@
+/* Copyright Notice
+SPDX-FileCopyrightText: 2025 Observes io LTD
+SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
+Copyright (c) 2025 Observes io LTD, Scotland, Company No. SC864704
+Licensed under PolyForm Internal Use 1.0.0, see LICENSE or https://polyformproject.org/licenses/internal-use/1.0.0
+Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
+*/
+
 import { useState, useEffect } from 'react'
 import {
   Box,
@@ -8,7 +17,11 @@ import {
   RadioGroup,
   Typography,
   Button,
+  Tabs,
+  Tab,
 } from '@mui/material'
+
+import ThirdPartyComponents from '../components/ThirdPartyComponents';
 
 import useStore from '../../state/stores/store';
 
@@ -40,6 +53,14 @@ const Settings = () => {
   }
 
   useEffect(() => {
+    /* Copyright Notice
+    SPDX-FileCopyrightText: 2025 Observes io LTD
+    SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
+    Copyright (c) 2025 Observes io LTD, Scotland, Company No. SC864704
+    Licensed under PolyForm Internal Use 1.0.0, see LICENSE or https://polyformproject.org/licenses/internal-use/1.0.0
+    Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
+    */
     setCurrentPage("Settings");
   }, [setCurrentPage]);
 
@@ -63,32 +84,44 @@ const Settings = () => {
   // LOCAL
 
 
+  // Tab state
+  const [tab, setTab] = useState(0);
+
   return (
     <Box sx={{ p: 3 }}>
-      {/* <Typography variant="h3" gutterBottom sx={{ fontSize: '1.3rem' }}>
-        Global Settings
-            </Typography> */}
+      <Box sx={{ background: '#fafafa', border: '1px solid #ddd', borderRadius: 2, maxWidth: 900, mx: 'auto', minHeight: 56, mb: 2 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          textColor="primary"
+          indicatorColor="primary"
+          variant="fullWidth"
+        >
+          <Tab label="Settings" sx={{ fontWeight: 500 }} />
+          <Tab label="Licenses and Attribution" sx={{ fontWeight: 500 }} />
+        </Tabs>
+      </Box>
+      {tab === 0 && (
+        <Box sx={{ maxWidth: 600, mx: 'auto', mt: 4, p: 3, border: '1px solid #ccc', borderRadius: 2 }}>
+          <FormControl fullWidth margin="normal">
+            <FormLabel sx={{ color: 'black' }}>Menu Layout</FormLabel>
+            <Typography variant="caption" color="textSecondary" sx={{}}>
+              Header layout is recommended for the Backstage integration.
+            </Typography>
+            <RadioGroup
+              row
+              value={localSettings.MenuLayout}
+              onChange={(e) => handleChange('MenuLayout', e.target.value)}
+            >
+              <FormControlLabel value="Header" control={<Radio />} label="Header" />
+              <FormControlLabel value="Sidebar" control={<Radio />} label="Sidebar" />
+            </RadioGroup>
+          </FormControl>
 
-            <Box sx={{ maxWidth: 600, mx: 'auto', mt: 4, p: 3, border: '1px solid #ccc', borderRadius: 2 }}>
-        <FormControl fullWidth margin="normal">
-          <FormLabel sx={{ color: 'black' }}>Menu Layout</FormLabel>
-          <Typography variant="caption" color="textSecondary" sx={{}}>
-            Header layout is recommended for the Backstage integration.
-          </Typography>
-          <RadioGroup
-            row
-            value={localSettings.MenuLayout}
-            onChange={(e) => handleChange('MenuLayout', e.target.value)}
-          >
-            <FormControlLabel value="Header" control={<Radio />} label="Header" />
-            <FormControlLabel value="Sidebar" control={<Radio />} label="Sidebar" />
-          </RadioGroup>
-        </FormControl>
 
-          
 
-        {/* Language @TODO (not implemented anything yet that looks at these settings) */}
-        {/* <TextField
+          {/* Language @TODO (not implemented anything yet that looks at these settings) */}
+          {/* <TextField
           fullWidth
           margin="normal"
           label="Language"
@@ -97,8 +130,8 @@ const Settings = () => {
           placeholder="e.g. en, es, fr"
         /> */}
 
-        {/* FontSize @TODO (not implemented anything yet that looks at these settings) */}
-        {/* <FormControl fullWidth margin="normal">
+          {/* FontSize @TODO (not implemented anything yet that looks at these settings) */}
+          {/* <FormControl fullWidth margin="normal">
           <FormLabel>Font Size</FormLabel>
           <RadioGroup
             row
@@ -111,8 +144,8 @@ const Settings = () => {
           </RadioGroup>
         </FormControl> */}
 
-        {/* Primary Color @TODO (not implemented anything yet that looks at these settings) */}
-        {/* <TextField
+          {/* Primary Color @TODO (not implemented anything yet that looks at these settings) */}
+          {/* <TextField
           fullWidth
           margin="normal"
           label="Primary Color"
@@ -121,8 +154,8 @@ const Settings = () => {
           onChange={(e) => handleChange('PrimaryColor', e.target.value)}
         /> */}
 
-        {/* Toggles that do nothing @TODO (not implemented anything yet that looks at these settings) */}
-        {/* <Box display="flex" justifyContent="space-between" alignItems="center" mt={2}>
+          {/* Toggles that do nothing @TODO (not implemented anything yet that looks at these settings) */}
+          {/* <Box display="flex" justifyContent="space-between" alignItems="center" mt={2}>
           <Typography>Show Notifications</Typography>
           <Switch
             disabled
@@ -212,8 +245,8 @@ const Settings = () => {
             />
           </Box> */}
 
-        {/* Date Format */}
-        {/* <FormControl fullWidth margin="normal">
+          {/* Date Format */}
+          {/* <FormControl fullWidth margin="normal">
           <FormLabel>Date Format</FormLabel>
           <TextField
             fullWidth
@@ -224,15 +257,23 @@ const Settings = () => {
           />
         </FormControl> */}
 
-        {/* Save Button */}
-        <Box mt={3} textAlign="right">
-          <Button variant="standard" color="primary" onClick={handleSave}>
-            Save Settings
-          </Button>
+          {/* Save Button */}
+          <Box mt={3} textAlign="right">
+            <Button variant="standard" color="primary" onClick={handleSave}>
+              Save Settings
+            </Button>
+          </Box>
         </Box>
-      </Box>
-
-    </Box>
+      )
+      }
+      {
+        tab === 1 && (
+          <Box sx={{ maxWidth: 900, mx: 'auto', mt: 4 }}>
+            <ThirdPartyComponents />
+          </Box>
+        )
+      }
+    </Box >
   );
 };
 

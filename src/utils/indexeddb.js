@@ -1,3 +1,12 @@
+/* Copyright Notice
+SPDX-FileCopyrightText: 2025 Observes io LTD
+SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
+Copyright (c) 2025 Observes io LTD, Scotland, Company No. SC864704
+Licensed under PolyForm Internal Use 1.0.0, see LICENSE or https://polyformproject.org/licenses/internal-use/1.0.0
+Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
+*/
+
 import { OBSERVES_DB_NAME } from './dbConfig';
 import defaultSettings from '../state/stores/defaultSettings';
 import defaultLogicContainers from '../state/stores/defaultLogicContainers';
@@ -305,6 +314,7 @@ export async function initIndexDb() {
     const createdStores = missingStores.map(store => store.name);
     if (createdStores.length > 0) {
       await initialPopulate({ dbName, createdStores });
+      if (requiredStores.length == createdStores.length) return false;
       return true;
     }
     // Only indexes were added, not stores
