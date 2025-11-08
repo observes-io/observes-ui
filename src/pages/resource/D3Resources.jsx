@@ -12,6 +12,8 @@ import * as d3 from 'd3';
 import PropTypes, { func } from 'prop-types';
 import { Typography, Stack, TableContainer, FormControlLabel, Switch, Table, Paper, TableHead, TableRow, TableCell, TableBody, Tabs, Tab, Box, Dialog, DialogActions, DialogContent, Link, DialogTitle, Slide, Button, List, ListItem, ListItemText, ownerDocument } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import DownloadIcon from '@mui/icons-material/Download';
+import ImageIcon from '@mui/icons-material/Image';
 import { CircularProgress } from '@mui/material';
 import resourceTypeStyle from '../theme/resourceTypeStyle.js';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
@@ -491,11 +493,14 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
 
         // Create SVG container
         const svg = d3.select(svgRef.current)
+            .attr("id", "d3jsGraphSvg")
             .attr("width", width)
             .attr("height", height)
             .attr("viewBox", [-width / 2, -height / 2, width, height])
             .style("max-width", "100%")
             .style("height", "auto");
+
+
 
         svg.call(d3.zoom().on("zoom", zoomed));
         const g = svg.append("g");
@@ -1229,6 +1234,161 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
 
     const [showLegend, setShowLegend] = useState(true);
 
+    const handleDownloadSVG = () => {
+        const svg = d3.select("#d3jsGraphSvg");
+        if (svg.empty()) {
+            console.error("SVG element not found");
+            return;
+        }
+
+        // Get the SVG HTML content
+        const svgHtml = svg.node().outerHTML;
+
+        // Create a blob with the SVG content
+        const blob = new Blob([svgHtml], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+
+        // Create a temporary download link
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = 'resource-graph.svg';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+
+        // Clean up the URL
+        URL.revokeObjectURL(url);
+    };
+
+    const handleDownloadPNG = () => {
+        const svg = d3.select("#d3jsGraphSvg");
+        if (svg.empty()) {
+            console.error("SVG element not found");
+            return;
+        }
+
+        try {
+            // Clone the SVG to avoid modifying the original
+            const svgNode = svg.node().cloneNode(true);
+
+            // Remove any problematic attributes that might cause CSP issues
+            svgNode.removeAttribute('xmlns:xlink');
+
+            // Ensure SVG has proper namespace
+            svgNode.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+            // Get SVG dimensions
+            const bbox = svg.node().getBBox();
+            const width = 1500;
+            const height = 1500;
+
+            // Create a clean SVG string with inline styles
+            const svgString = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" 
+     width="${width}" 
+     height="${height}" 
+     viewBox="${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}">
+    <style>
+        circle { stroke-width: 1; }
+        line { stroke: #999; stroke-opacity: 0.6; }
+        text { font-family: Arial, sans-serif; font-size: 12px; fill: #000; }
+    </style>
+    ${svgNode.innerHTML}
+</svg>`;
+
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const scale = 2;
+
+            canvas.width = width * scale;
+            canvas.height = height * scale;
+
+            // Set white background
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Create image
+            const img = new Image();
+
+            img.onload = () => {
+                try {
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            const downloadLink = document.createElement('a');
+                            downloadLink.href = URL.createObjectURL(blob);
+                            downloadLink.download = 'resource-graph.png';
+                            document.body.appendChild(downloadLink);
+                            downloadLink.click();
+                            document.body.removeChild(downloadLink);
+                            URL.revokeObjectURL(downloadLink.href);
+                        } else {
+                            console.error("Failed to create blob from canvas");
+                        }
+                    }, 'image/png', 0.95);
+                } catch (drawError) {
+                    console.error("Error drawing to canvas:", drawError);
+                }
+            };
+
+            img.onerror = (error) => {
+                console.error("Error loading SVG image:", error);
+                // Fallback: try with a data URL
+                this.tryDataUrlFallback(svgString, width, height, scale);
+            };
+
+            // Use data URL instead of blob URL to avoid CSP issues
+            const dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgString)));
+            img.src = dataUrl;
+
+        } catch (error) {
+            console.error("Error in PNG conversion:", error);
+            alert("PNG conversion failed. Please try downloading as SVG instead.");
+        }
+    };
+
+    const tryDataUrlFallback = (svgString, width, height, scale) => {
+        try {
+            // Simplified SVG without complex styling
+            const simplifiedSvg = svgString.replace(/<style>[\s\S]*?<\/style>/g, '');
+            const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(simplifiedSvg);
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = width * scale;
+            canvas.height = height * scale;
+
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const img = new Image();
+            img.onload = () => {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = URL.createObjectURL(blob);
+                        downloadLink.download = 'resource-graph.png';
+                        document.body.appendChild(downloadLink);
+                        downloadLink.click();
+                        document.body.removeChild(downloadLink);
+                        URL.revokeObjectURL(downloadLink.href);
+                    }
+                }, 'image/png');
+            };
+            img.onerror = () => {
+                console.error("Fallback method also failed");
+                alert("PNG conversion failed. Your browser may have security restrictions. Please try downloading as SVG instead.");
+            };
+            img.src = dataUrl;
+        } catch (fallbackError) {
+            console.error("Fallback conversion failed:", fallbackError);
+            alert("PNG conversion failed. Please try downloading as SVG instead.");
+        }
+    };
+
     return (
         <Box sx={{ display: 'flex', height: '100%' }}>
             {loading ? (
@@ -1237,8 +1397,6 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                 <Box sx={{ display: 'flex', height: '100%', border: '1px solid #ccc', borderRadius: '8px', padding: '16px', flexDirection: 'column' }}>
                     <svg ref={svgRef}></svg>
                     {renderDialogContent()}
-                    <Box sx={{ width: '100%', mt: 2, display: 'flex', flexDirection: 'row', justifyContent: 'flex-end' }}>
-                    </Box>
                     {showLegend && (
                         <Box sx={{ width: '100%', mt: 2, display: 'flex', flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 2 }}>
                             {legendItems.map(({ label, circleStyle }) => (
@@ -1267,13 +1425,34 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                             ))}
                         </Box>
                     )}
-                    <Button
-                        size="small"
-                        onClick={() => setShowLegend((prev) => !prev)}
-                        sx={{ mb: 1, width: 'fit-content', alignSelf: 'flex-end' }}
-                    >
-                        {showLegend ? <InfoIcon fontSize="small" /> : <InfoOutlineIcon fontSize="small" />}
-                    </Button>
+
+                    <Box sx={{ display: 'flex', flexDirection: 'row', gap: 1, alignItems: 'center', justifyContent: 'flex-end', mb: 1 }}>
+                        <Button
+                            size="small"
+                            onClick={() => setShowLegend((prev) => !prev)}
+                            sx={{ minWidth: 'auto', width: 'auto' }}
+                        >
+                            {showLegend ? <InfoIcon fontSize="small" /> : <InfoOutlineIcon fontSize="small" />}
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<DownloadIcon />}
+                            onClick={handleDownloadSVG}
+                            sx={{ minWidth: 'auto', width: 'auto' }}
+                        >
+                            SVG
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<ImageIcon />}
+                            onClick={handleDownloadPNG}
+                            sx={{ minWidth: 'auto', width: 'auto' }}
+                        >
+                            PNG
+                        </Button>
+                    </Box>
                 </Box>
             }
         </Box>

@@ -10,12 +10,17 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 // spa/vite.config.js
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), basicSsl()],
   base: './', // ✅ relative paths instead of `/assets/...`
   build: {
     outDir: 'dist', // where final build goes
     emptyOutDir: true,
+  },
+  server: {
+    host: true, // Allow external connections
+    port: 3000,
   },
 })

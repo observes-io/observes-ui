@@ -1,6 +1,6 @@
 {
   "name": "observes-ui",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "dependencies": {
@@ -20,6 +20,7 @@
     "chart.js": "^4.4.8",
     "d3": "^7.9.0",
     "dayjs": "1.11.13",
+    "dompurify": "^3.3.0",
     "globals": "^15.14.0",
     "prop-types": "^15.8.1",
     "react": "^18.3.1",
@@ -40,6 +41,7 @@
     "@eslint/js": "^9.17.0",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-basic-ssl": "^2.1.0",
     "@vitejs/plugin-react": "^4.3.4",
     "@xyflow/react": "^12.6.0",
     "eslint": "^9.17.0",

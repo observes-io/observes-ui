@@ -1,5 +1,8 @@
 [![License: Internal Use Only](https://img.shields.io/badge/license-Internal%20Use%20Only-red)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/observes-io/observes-ui?label=release)](https://github.com/observes-io/observes-ui/releases)
+[![Snyk Result](https://img.shields.io/badge/snyk%20scan-result-blue)](https://snyk.io/test/github/observes-io/observes-ui)
 [![Security Policy](https://img.shields.io/badge/security-policy-blue)](SECURITY.md)
+[![SBOM](https://img.shields.io/badge/SBOM-published-green)](https://github.com/observes-io/supply-chain/tree/main/observes-ui)
 
 > **License Summary:** Free for internal organisational use (including production) by your own employees and contractors, solely for your organisation's benefit.
 > Not for embedding, bundling, resale, hosting, offering as a service, or any paid commercial use without a license.

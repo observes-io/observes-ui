@@ -23,6 +23,7 @@ import BadgeIcon from '@mui/icons-material/Badge';
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
 import InfoRoundedIcon from '@mui/icons-material/InfoRounded';
 import HelpRoundedIcon from '@mui/icons-material/HelpRounded';
+import GavelIcon from '@mui/icons-material/Gavel';
 import BusinessIcon from '@mui/icons-material/Business';
 import MuiListItemAvatar from '@mui/material/ListItemAvatar';
 import { selectClasses } from '@mui/material/Select';
@@ -48,14 +49,9 @@ const Drawer = styled(MuiDrawer)({
 const mainListItems = [
   { id: 'overview', text: 'Overview', icon: <HomeRoundedIcon /> },
   { id: 'resource', text: 'Tracker', icon: <ScatterPlotIcon /> },
+  // { id: 'policy', text: 'Compliance', icon: <GavelIcon /> },
   { id: 'platform', text: 'Platform Manager', icon: <BadgeIcon /> },
   { id: 'settings', text: 'Settings', icon: <SettingsIcon /> },
-];
-
-const secondaryListItems = [
-  { text: 'Settings', icon: <SettingsRoundedIcon /> },
-  { text: 'About', icon: <InfoRoundedIcon /> },
-  { text: 'Feedback', icon: <HelpRoundedIcon /> },
 ];
 
 export default function Sidebar({ onMenuItemClick }) {

@@ -110,6 +110,46 @@ export interface LogicContainer {
     resources: string[];
 }
 
+// SAVED SEARCHES
+
+export interface SavedSearch {
+    id: string;
+    name: string;
+    description?: string;
+    resourceFilters?: {
+        searchTerm?: string;
+        protectedState?: string;
+        crossProject?: boolean;
+        poolType?: string;
+        logic_container_filter?: string;
+        filterForOverprivilegedResources?: boolean;
+        filterForOversharedResources?: boolean;
+        resource_type_selected?: string;
+        selectedProject?: string;
+    };
+    pipelineFilters?: {
+        searchTermPipelines?: string;
+        pipelinesUsingFilteredResources?: boolean;
+        resourcePermissions?: string;
+        buildsFilter?: string;
+        pipelineAdvancedFilters?: Array<{
+            field: string;
+            operator: string;
+            value: string;
+            negate?: boolean;
+        }>;
+        filterForAlertedPipelines?: boolean;
+        filterForJobAuthorizationScope?: string;
+        filterForPipelineType?: string;
+        filterForOverprivilegedPipelines?: boolean;
+        filterForUnqueriablePipelines?: boolean;
+        filterForDisabledPipelines?: boolean;
+        selectedProject?: string;
+    };
+    createdAt: string;
+    updatedAt?: string;
+}
+
 // CICDSAST
 
 export interface CicdSast {
@@ -201,6 +241,7 @@ interface StoreState {
 
     logic_containers: LogicContainer[];
     connected_systems: ConnectedSystem[];
+    savedSearches: SavedSearch[];
 
     policies: Policy[];
     policyGroups: PolicyGroup[];
@@ -261,6 +302,12 @@ interface StoreState {
     updateLogicContainer: (logicContainerId: String, updated: LogicContainer) => Promise<void>;
     deleteLogicContainer: (id: string) => Promise<void>;
 
+    // Saved searches CRUD operations
+    fetchSavedSearches: () => Promise<void>;
+    createSavedSearch: (savedSearch: Omit<SavedSearch, 'id' | 'createdAt'>) => Promise<void>;
+    updateSavedSearch: (id: string, updates: Partial<SavedSearch>) => Promise<void>;
+    deleteSavedSearch: (id: string) => Promise<void>;
+
     getProtectedResourcesByOrgTypeAndIdsSummary: (orgId: string, resourceType: string, resourceIds: string[]) => Promise<any[]>;
 
     fetchProtectedResourcesByTypeOrgProject: (orgId: string, resourceType: string, projectId: string) => Promise<{ resources: any[], total: number }>;
@@ -316,6 +363,7 @@ const useStore = create<StoreState>((set) => ({
     // Platform
     logic_containers: [],
     connected_systems: [],
+    savedSearches: [],
     pipelines: [],
     builds: [],
 
@@ -644,7 +692,7 @@ const useStore = create<StoreState>((set) => ({
             const stores = [
                 // 'scanresults', 
                 'organisations', 'projects', 'protected_resources',
-                'build_definitions', 'builds', 'stats'
+                'build_definitions', 'builds', 'stats', 'saved_searches'
             ];
             for (const store of stores) {
                 await ensureObjectStore(dbName, store);
@@ -1063,7 +1111,62 @@ const useStore = create<StoreState>((set) => ({
             !feed.k_project || (feed.k_project && feed.k_project.id === projectId)
         );
         return {feeds: filtered, total: filtered.length};
-    }
+    },
+
+    // Saved searches CRUD operations
+    fetchSavedSearches: async () => {
+        try {
+            const dbName = OBSERVES_DB_NAME;
+            const storeName = "saved_searches";
+            await ensureObjectStore(dbName, storeName);
+            const savedSearches = await getAllRecords(storeName);
+            set({ savedSearches: savedSearches || [] });
+        } catch (error) {
+            console.error("Error fetching saved searches from IndexedDB:", error);
+            set({ savedSearches: [] });
+        }
+    },
+
+    createSavedSearch: async (savedSearchData) => {
+        try {
+            const id = `search_${new Date().getTime()}_${Math.random().toString(36).substr(2, 9)}`;
+            const now = new Date().toISOString();
+            const savedSearch: SavedSearch = {
+                id,
+                ...savedSearchData,
+                createdAt: now,
+                updatedAt: now
+            };
+            
+            await addRecord('saved_searches', savedSearch);
+            await useStore.getState().fetchSavedSearches();
+        } catch (error) {
+            console.error('Error creating saved search:', error);
+        }
+    },
+
+    updateSavedSearch: async (id, updates) => {
+        try {
+            const now = new Date().toISOString();
+            await updateRecord('saved_searches', id, (current: SavedSearch) => ({
+                ...current,
+                ...updates,
+                updatedAt: now
+            }));
+            await useStore.getState().fetchSavedSearches();
+        } catch (error) {
+            console.error('Error updating saved search:', error);
+        }
+    },
+
+    deleteSavedSearch: async (id) => {
+        try {
+            await deleteRecord('saved_searches', id);
+            await useStore.getState().fetchSavedSearches();
+        } catch (error) {
+            console.error('Error deleting saved search:', error);
+        }
+    },
 
 }));
 

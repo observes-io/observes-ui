@@ -72,9 +72,14 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
   const handleRemoveLogicContainer = async (logicContainerId, resourceId) => {
     const container = logicContainers.find(lc => lc.id === logicContainerId);
     if (!container || !Array.isArray(container.resources)) {
-      if (onLogicContainerChange) onLogicContainerChange();
       return;
     }
+    
+    // Only proceed if the resource is actually in the container
+    if (!container.resources.includes(resourceId)) {
+      return;
+    }
+    
     const updated = { ...container, resources: container.resources.filter(id => id !== resourceId) };
     await updateLogicContainer(logicContainerId, updated);
     if (onLogicContainerChange) onLogicContainerChange();

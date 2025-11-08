@@ -22,7 +22,7 @@ import BusinessIcon from '@mui/icons-material/Business';
 import MuiListItemAvatar from '@mui/material/ListItemAvatar';
 import { AppBar } from '@mui/material';
 import { DownloadOutlined } from '@mui/icons-material';
-
+import GavelIcon from '@mui/icons-material/Gavel';
 
 
 const ListItemAvatar = styled(MuiListItemAvatar)({
@@ -34,6 +34,7 @@ const ListItemAvatar = styled(MuiListItemAvatar)({
 const mainListItems = [
   { id: 'overview', text: 'Overview', icon: <HomeRoundedIcon /> },
   { id: 'resource', text: 'Tracker', icon: <ScatterPlotIcon /> },
+  // { id: 'policy', text: 'Compliance', icon: <GavelIcon /> },
   { id: 'platform', text: 'Platform Manager', icon: <BadgeIcon /> },
   { id: 'settings', text: 'Settings', icon: <SettingsIcon /> },
 ];

@@ -16,6 +16,7 @@ import Header from './components/Header';
 
 import Overview from './dashboard/Dashboard';
 import PlatformManagement from './platform/Platform';
+import PolicyManagement from './policy/Policy';
 import ResourceTracker from './resource/ResourceTracker';
 import Settings from './settings/Settings';
 
@@ -70,6 +71,7 @@ const Landing = () => {
                 <Route path="/overview" element={<Overview />} />
                 <Route path="/platform" element={<PlatformManagement />} />
                 <Route path="/resource" element={<ResourceTracker />} />
+                {/* <Route path="/policy" element={<PolicyManagement />} /> */}
                 <Route path="/settings" element={<Settings />} />
               </Routes>
             </Stack>

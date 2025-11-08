@@ -9,9 +9,7 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 
 import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
-
 import {
-
     Typography,
     Box,
     Button,
@@ -120,7 +118,7 @@ const PipelinesTab = ({ projectId }) => {
                         })()
                     }
                 </Typography>
-                
+
                 {/* InputGroup-like filter controls for pipelines */}
                 <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
                     <Select

@@ -9,7 +9,6 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 
 import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
-
 import {
 
     Typography,
@@ -188,7 +187,7 @@ const VariableGroupsTab = ({ projectId }) => {
                     {error}
                 </Typography>
             ) : variableGroups.length === 0 ? (
-              <Typography
+                <Typography
                     variant="body2"
                     color="textSecondary"
                     sx={{

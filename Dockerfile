@@ -20,7 +20,7 @@ COPY . .
 RUN npm run build
 
 # Use official Nginx image for serving static files
-FROM nginx:1.29.1-alpine3.22-slim
+FROM nginx:1.29.3-alpine3.22-slim
 
 # Remove default nginx static assets
 RUN rm -rf /usr/share/nginx/html/*

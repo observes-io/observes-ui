@@ -7,10 +7,12 @@ Licensed under PolyForm Internal Use 1.0.0, see LICENSE or https://polyformproje
 Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 */
 
+
 import React, { useState, useEffect } from 'react';
 import ResourceTable from './ResourceTable';
 import PipelineTable from './PipelineTable';
 import D3JSResource from './D3Resources';
+import { SaveSearchDialog, LoadSearchDialog, ConfirmDeleteDialog } from './SearchDialogs';
 import Stack from '@mui/material/Stack';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -18,19 +20,30 @@ import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
-import { ListSubheader, Tooltip, Chip, Typography, CircularProgress, TextField, Checkbox, FormControlLabel, Divider } from '@mui/material';
+import { ListSubheader, Tooltip, Chip, Typography, CircularProgress, TextField, Checkbox, FormControlLabel, Divider, Fab, Zoom, Switch, ClickAwayListener, Collapse, Paper } from '@mui/material';
 import ResourceButtonGroup from '../components/ResourceButtonGroup';
 import useStore from '../../state/stores/store';
 import Dialog from '@mui/material/Dialog';
 import IconButton from '@mui/material/IconButton';
+import SaveAsIcon from '@mui/icons-material/SaveAs';
+import SearchIcon from '@mui/icons-material/Search';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
-import { set } from 'react-hook-form';
+import CloseIcon from '@mui/icons-material/Close';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import TuneIcon from '@mui/icons-material/Tune';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PrintIcon from '@mui/icons-material/Print';
 import { resourceTypes } from '../../utils/resourceTypes';
+import { set } from 'react-hook-form';
+import DOMPurify from "dompurify";
+import { Delete, DeleteForever } from '@mui/icons-material';
+import DeleteForeverSharpIcon from '@mui/icons-material/DeleteForeverSharp';
 
 const ResourceTracker = () => {
 
-    const { selectedScan, resource_type_selected, projects, selectedProject, logic_containers, getProtectedResourcesByOrgTypeAndIdsSummary, setResourceTypeSelected, setCurrentPage, fetchResources, fetchLogicContainers, fetchBuilds, fetchPipelines } = useStore();
+    const { selectedScan, resource_type_selected, projects, selectedProject, logic_containers, getProtectedResourcesByOrgTypeAndIdsSummary, setResourceTypeSelected, setCurrentPage, fetchResources, fetchLogicContainers, fetchBuilds, fetchPipelines, savedSearches, fetchSavedSearches, createSavedSearch, deleteSavedSearch, updateSavedSearch } = useStore();
 
     // Local state for large resources
     const [endpoints, setEndpoints] = useState([]);
@@ -78,8 +91,33 @@ const ResourceTracker = () => {
     const [filterForDisabledPipelines, setFilterForDisabledPipelines] = useState(false);
     const [filterForOversharedResources, setFilterForOversharedResources] = useState(false);
 
-    const [d3Open, setD3Open] = useState(false);
     const [d3Flex, setD3Flex] = useState(2);
+
+    // Floating filter FAB state
+    const [resourceFilterExpanded, setResourceFilterExpanded] = useState(false);
+    const [pipelineFilterExpanded, setPipelineFilterExpanded] = useState(false);
+
+    // Main filtering UI visibility state
+    const [filteringUICollapsed, setFilteringUICollapsed] = useState(false);
+
+    // Scroll-based visibility for Fab filters
+    const [showFabFilters, setShowFabFilters] = useState(false);
+
+    // Save search dialog state
+    const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Load search dialog state
+    const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+    const [selectedSavedSearch, setSelectedSavedSearch] = useState(null);
+
+    // Edit search state
+    const [editingSearchId, setEditingSearchId] = useState(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    // Confirmation dialog state
+    const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+    const [searchToDelete, setSearchToDelete] = useState(null);
 
     // Filters for resource - counters
     useEffect(() => {
@@ -119,7 +157,11 @@ const ResourceTracker = () => {
 
     useEffect(() => {
         setCurrentPage("Tracker");
-    }, [setCurrentPage]);
+        Promise.resolve(fetchSavedSearches()).catch(error => {
+            console.error("Failed to fetch saved searches:", error);
+        });
+    }, [setCurrentPage, fetchSavedSearches]);
+
 
 
     useEffect(() => {
@@ -178,14 +220,7 @@ const ResourceTracker = () => {
                         setPools([]);
                         setSecureFiles([]);
                         break;
-                /* Copyright Notice
-                SPDX-FileCopyrightText: 2025 Observes io LTD
-                SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
 
-                Copyright (c) 2025 Observes io LTD, Scotland, Company No. SC864704
-                Licensed under PolyForm Internal Use 1.0.0, see LICENSE or https://polyformproject.org/licenses/internal-use/1.0.0
-                Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
-                */
                 }
                 fetchBuilds(selectedScan.id).then(setBuilds);
                 fetchPipelines(selectedScan.id).then(setPipelines);
@@ -197,8 +232,30 @@ const ResourceTracker = () => {
 
     }, [selectedScan, resource_type_selected, fetchLogicContainers, fetchResources, fetchBuilds, fetchPipelines]);
 
+    // Scroll detection for showing Fab filters when filtering UI is out of sight
+    useEffect(() => {
+        const handleScroll = () => {
+            const scrollPosition = window.scrollY;
+            const windowHeight = window.innerHeight;
+            const documentHeight = document.documentElement.scrollHeight;
+
+            // Calculate scroll percentage
+            const scrollPercentage = scrollPosition / (documentHeight - windowHeight);
+
+            // Show Fab filters when scrolled past 45% of the page
+            setShowFabFilters(scrollPercentage > 0.33);
+        };
+
+        window.addEventListener('scroll', handleScroll);
+
+        // Cleanup event listener on component unmount
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+        };
+    }, []);
+
     const handleFilterReset = (scope) => {
-        if (scope === 'resource') {
+        if (scope === 'resource' || !scope) {
             setlogic_container_filter('all');
             setSearchTerm('');
             setProtectedState('all');
@@ -208,7 +265,7 @@ const ResourceTracker = () => {
             setFilterForOverprivilegedResources(false);
             setFilterForOversharedResources(false);
         }
-        if (scope === 'pipeline') {
+        if (scope === 'pipeline' || !scope) {
             // console.log('Resetting Pipeline Filters');
             setSearchTermPipelines('');
             setPipelinesUsingFilteredResources(false);
@@ -228,11 +285,12 @@ const ResourceTracker = () => {
             ]);
 
         }
-        if (scope === 'policy') {
+        if (scope === 'policy' || !scope) {
             setFilterForOverprivilegedResources(false);
             setFilterForOverprivilegedPipelines(false);
             setFilterForOversharedResources(false);
         }
+        setSelectedSavedSearch(null);
     };
 
     const handleResourceTypeChange = (type) => {
@@ -292,7 +350,194 @@ const ResourceTracker = () => {
 
     // Handler to remove a filter row
     const handleRemoveAdvancedFilter = (idx) => {
+        if (pipelineAdvancedFilters.length === 1) {
+            setPipelineAdvancedFilters([
+                { field: 'jobPool', operator: 'equals', value: '' }
+            ]);
+            return;
+        }
         setPipelineAdvancedFilters(filters => filters.filter((_, i) => i !== idx));
+    };
+
+    // Handler to save the search
+    const handleSaveSearch = async (formData) => {
+        if (!formData.name.trim()) {
+            alert('Please enter a name for the search');
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const searchData = {
+                name: formData.name,
+                description: formData.description,
+                resourceType: resource_type_selected,
+                resourceFilters: isFilteredResource > 0 ? {
+                    searchTerm,
+                    protectedState,
+                    crossProject,
+                    poolType,
+                    logic_container_filter,
+                    filterForOverprivilegedResources,
+                    filterForOversharedResources,
+                    resource_type_selected,
+                    selectedProject: selectedProject?.id,
+                } : null,
+                pipelineFilters: isFilteredPipeline > 0 ? {
+                    searchTermPipelines,
+                    pipelinesUsingFilteredResources,
+                    resourcePermissions,
+                    buildsFilter,
+                    pipelineAdvancedFilters,
+                    filterForAlertedPipelines,
+                    filterForJobAuthorizationScope,
+                    filterForPipelineType,
+                    filterForOverprivilegedPipelines,
+                    filterForUnqueriablePipelines,
+                    filterForDisabledPipelines,
+                    selectedProject: selectedProject?.id,
+                } : null,
+            };
+
+            if (editingSearchId) {
+                // Update existing search
+                await updateSavedSearch(editingSearchId, searchData);
+                console.log('Search updated successfully!');
+            } else {
+                // Create new search
+                await createSavedSearch(searchData);
+                console.log('Search saved successfully!');
+            }
+
+            // Reset dialog state and close
+            setEditingSearchId(null);
+            setSaveDialogOpen(false);
+
+            // Refresh the saved searches list
+            fetchSavedSearches();
+        } catch (error) {
+            console.error(`Failed to ${editingSearchId ? 'update' : 'save'} search:`, error);
+            alert(`Failed to ${editingSearchId ? 'update' : 'save'} search. Please try again.`);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    // Handler to load a saved search
+    const handleLoadSearch = (savedSearch) => {
+
+        handleFilterReset('resource');
+        handleFilterReset('pipeline');
+        setSelectedSavedSearch(savedSearch);
+
+        // Apply resource filters
+        if (savedSearch.resourceFilters) {
+            setSearchTerm(savedSearch.resourceFilters.searchTerm || '');
+            setProtectedState(savedSearch.resourceFilters.protectedState || 'all');
+            setCrossProject(savedSearch.resourceFilters.crossProject || false);
+            setPoolType(savedSearch.resourceFilters.poolType || 'all');
+            setlogic_container_filter(savedSearch.resourceFilters.logic_container_filter || 'all');
+            setFilterForOverprivilegedResources(savedSearch.resourceFilters.filterForOverprivilegedResources || false);
+            setFilterForOversharedResources(savedSearch.resourceFilters.filterForOversharedResources || false);
+        }
+
+        // Apply pipeline filters
+        if (savedSearch.pipelineFilters) {
+            setSearchTermPipelines(savedSearch.pipelineFilters.searchTermPipelines || '');
+            setPipelinesUsingFilteredResources(savedSearch.pipelineFilters.pipelinesUsingFilteredResources || false);
+            setPipelineAdvancedFilters(savedSearch.pipelineFilters.pipelineAdvancedFilters || [{ field: 'jobPool', operator: 'equals', value: '' }]);
+            setFilterForAlertedPipelines(savedSearch.pipelineFilters.filterForAlertedPipelines || false);
+            setFilterForJobAuthorizationScope(savedSearch.pipelineFilters.filterForJobAuthorizationScope || 'all');
+            setFilterForPipelineType(savedSearch.pipelineFilters.filterForPipelineType || 'all');
+            setFilterForOverprivilegedPipelines(savedSearch.pipelineFilters.filterForOverprivilegedPipelines || false);
+            setFilterForUnqueriablePipelines(savedSearch.pipelineFilters.filterForUnqueriablePipelines || false);
+            setFilterForDisabledPipelines(savedSearch.pipelineFilters.filterForDisabledPipelines || false);
+        }
+
+        setLoadDialogOpen(false);
+        console.log('Loaded saved search:', selectedSavedSearch);
+        // setSelectedSavedSearch(null);
+    };
+
+    // Handler to edit a saved search
+    const handleEditSearch = (search) => {
+        setEditingSearchId(search.id);
+        setSaveDialogOpen(true);
+    };
+
+    // Handler to delete a saved search
+    const handleDeleteSearch = (searchId) => {
+        setSearchToDelete(searchId);
+        setConfirmDialogOpen(true);
+    };
+
+    // Handler to confirm deletion
+    const handleConfirmDelete = async () => {
+        if (!searchToDelete) return;
+
+        setIsDeleting(true);
+        try {
+            // Check if the deleted search is currently selected
+            const isCurrentlySelected = selectedSavedSearch && selectedSavedSearch.id === searchToDelete;
+
+            await deleteSavedSearch(searchToDelete);
+
+            // If the deleted search was selected, reset filters and clear selection
+            if (isCurrentlySelected) {
+                handleFilterReset('resource');
+                handleFilterReset('pipeline');
+                setSelectedSavedSearch(null);
+            }
+
+            // Refresh the saved searches list
+            fetchSavedSearches();
+            // if no searches are available close search dialog
+            if (!savedSearches.length) {
+                setLoadDialogOpen(false);
+            }
+        } catch (error) {
+            console.error('Failed to delete search:', error);
+            alert('Failed to delete search. Please try again.');
+        } finally {
+            setIsDeleting(false);
+            setConfirmDialogOpen(false);
+            setSearchToDelete(null);
+        }
+    };
+
+    // Handler to cancel deletion
+    const handleCancelDelete = () => {
+        setConfirmDialogOpen(false);
+        setSearchToDelete(null);
+    };
+
+    // Handler to cancel edit mode
+    const handleCancelEdit = () => {
+        setEditingSearchId(null);
+        setSaveDialogOpen(false);
+    };
+
+    // Get initial values for the dialog
+    const getInitialDialogValues = () => {
+        if (editingSearchId) {
+            const editingSearch = savedSearches.find(search => search.id === editingSearchId);
+            return {
+                name: editingSearch?.name || '',
+                description: editingSearch?.description || ''
+            };
+        }
+        return {
+            name: '',
+            description: ''
+        };
+    };
+
+    // Handler to clear selected search and reset filters
+    const handleClearSelectedSearch = (e) => {
+        e.stopPropagation(); // Prevent triggering the FAB's onClick
+        handleFilterReset('resource');
+        handleFilterReset('pipeline');
+        setSelectedSavedSearch(null);
     };
 
     function filterPipelinesByProject(definitions, projectFilter) {
@@ -371,7 +616,7 @@ const ResourceTracker = () => {
 
     function filterPipelinesUsingFilteredResources(filteredPipelines, filteredProtectedResources) {
 
-        // need to get the resources the pipeline can access dfrom here, a list and then use that list to filter against the filtered resources
+        // need to get the resources the pipeline can access from here, a list and then use that list to filter against the filtered resources
         var filteredProtectedResourcesIds = filteredProtectedResources.map(resource => String(resource.id))
 
         return Object.values(filteredPipelines).filter(p => {
@@ -615,114 +860,197 @@ const ResourceTracker = () => {
         const jobFilters = filters.filter(f => f.field === 'jobName' || f.field === 'jobPool');
         const stepFilters = filters.filter(f => f.field === 'stepType' || f.field === 'stepName' || f.field === 'stepDisplayName' || f.field === 'stepInputs' || f.field === 'stepEnabled');
 
-
+        // Filter pipelines
         var filt_pipelines = Object.values(pipelines).filter(pipeline => {
-            let yaml_recipe = {};
+            let yaml_recipes = [];
             if (pipeline.builds && pipeline.builds.preview) {
                 Object.entries(pipeline.builds.preview).forEach(([key, value]) => {
-                    yaml_recipe = value.pipeline_recipe;
+                    if (value.pipeline_recipe) {
+                        yaml_recipes.push(value.pipeline_recipe);
+                    }
                 });
             }
 
-            // if not yaml_recipe means theres no valid pipeline recipe, so skip this pipeline
-            if (!yaml_recipe || !yaml_recipe.trigger || !yaml_recipe.stages) {
-                // if filter unqueriable is true, show this pipeline
-                if (filters.some(f => f.field === 'unqueriable' && f.value === true)) {
-                    return true;
-                }
-                return false;
-            }
+            const someYamlRecipeMatches = yaml_recipes.some(yaml_recipe => {
 
-            // Trigger filters
-            const triggerResult = triggerFilters.every(filter => {
-                let result = yaml_recipe?.trigger && JSON.stringify(yaml_recipe?.trigger).toLowerCase().includes(filter.value.toLowerCase());
-                if (filter.negate) result = !result;
-                return result;
-            });
-            if (!triggerResult) return false;
-
-            // Stage filters: at least one stage matches all stage filters
-            const stages = yaml_recipe?.stages || [];
-            const stageResult = stageFilters.length === 0 || stages.some(stage => {
-                return stageFilters.every(filter => {
-                    let result = false;
-                    switch (filter.field) {
-                        case 'stageName':
-                            result = stage.stage && stage.stage.toLowerCase().includes(filter.value.toLowerCase());
-                            break;
-                        case 'stagePool':
-                            result = stage.pool && JSON.stringify(stage.pool).toLowerCase().includes(filter.value.toLowerCase());
-                            break;
-                        default:
-                            result = true;
+                // if not yaml_recipe means theres no valid pipeline recipe, so skip this pipeline
+                if (!yaml_recipe || !yaml_recipe.trigger || !yaml_recipe.stages) {
+                    // if filter unqueriable is true, show this pipeline
+                    if (filters.some(f => f.field === 'unqueriable' && f.value === true)) {
+                        return true;
                     }
+                    return false;
+                }
+
+                // Trigger filters - there is only one trigger, so easy logic
+                const triggerResult = triggerFilters.every(filter => {
+                    let result = yaml_recipe?.trigger && JSON.stringify(yaml_recipe?.trigger).toLowerCase().includes(filter.value.toLowerCase());
                     if (filter.negate) result = !result;
                     return result;
                 });
-            });
-            if (!stageResult) return false;
+                if (!triggerResult) return false;
 
-            // Job filters: at least one job (in any stage) matches all job filters
-            const jobResult = jobFilters.length === 0 || stages.some(stage =>
-                (stage.jobs || []).some(job => {
-                    return jobFilters.every(filter => {
-                        let result = false;
-                        switch (filter.field) {
-                            case 'jobName':
-                                result = job.job && job.job.toLowerCase().includes(filter.value.toLowerCase());
-                                break;
-                            case 'jobPool':
-                                result = job.pool && JSON.stringify(job.pool).toLowerCase().includes(filter.value.toLowerCase());
-                                break;
-                            default:
-                                result = true;
+                // Stage filters: At least one stage matches all stage filters
+                // If negation is in place for a single filter, I want to check if all stages do not match that filter
+                const stages = yaml_recipe?.stages || [];
+
+                if (stageFilters.length > 0) {
+                    // for every filter is an AND condition
+                    const stageFiltersResult = stageFilters.every(filter => {
+                        if (filter.negate) {
+                            const allStagesDoNotMatch = stages.every(stage => {
+                                let result = true;
+                                switch (filter.field) {
+                                    case 'stageName':
+                                        result = stage.stage && stage.stage.toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'stagePool':
+                                        result = stage.pool && JSON.stringify(stage.pool).toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    default:
+                                        // if filter is unknown, consider it a match, which negated means it will exclude the stage
+                                        result = true;
+                                }
+                                // negate logic - check if stage does not include the filter value
+                                result = !result;
+                                return result;
+                            });
+                            return allStagesDoNotMatch;
+                        } else {
+                            const someStagesMatch = stages.some(stage => {
+                                let result = false;
+                                switch (filter.field) {
+                                    case 'stageName':
+                                        result = stage.stage && stage.stage.toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'stagePool':
+                                        result = stage.pool && JSON.stringify(stage.pool).toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    default:
+                                        result = false;
+                                }
+                                return result;
+                            });
+                            return someStagesMatch;
                         }
-                        if (filter.negate) result = !result;
-                        return result;
-                    });
-                })
-            );
-            if (!jobResult) return false;
-
-            // Step filters: at least one step (in any job of any stage) matches all step filters
-            const stepResult = stepFilters.length === 0 || stages.some(stage =>
-                (stage.jobs || []).some(job =>
-                    (job.steps || []).some(step => {
-                        return stepFilters.every(filter => {
-                            let result = false;
-                            switch (filter.field) {
-                                case 'stepType':
-                                    result = step.type && step.type.toLowerCase().includes(filter.value.toLowerCase());
-                                    break;
-                                case 'stepName':
-                                    result = step.task && step.task.toLowerCase().includes(filter.value.toLowerCase());
-                                    break;
-                                case 'stepDisplayName':
-                                    result = step.displayName && step.displayName.toLowerCase().includes(filter.value.toLowerCase());
-                                    break;
-                                case 'stepInputs':
-                                    result = step.inputs && JSON.stringify(step.inputs).toLowerCase().includes(filter.value.toLowerCase());
-                                    break;
-                                case 'stepEnabled':
-                                    // Boolean, so check for string match or boolean match
-                                    if (typeof step.enabled === 'boolean') {
-                                        result = String(step.enabled).toLowerCase() === filter.value.toLowerCase();
-                                    } else if (typeof step.enabled === 'string') {
-                                        result = step.enabled.toLowerCase().includes(filter.value.toLowerCase());
-                                    }
-                                    break;
-                                default:
-                                    result = true;
-                            }
-                            if (filter.negate) result = !result;
-                            return result;
-                        });
                     })
-                )
-            );
-            if (!stepResult) return false;
+                    if (!stageFiltersResult) return false;
+                }
 
-            return true;
+
+                if (jobFilters.length > 0) {
+                    // for every filter is an AND condition
+                    const jobFiltersResult = jobFilters.every(filter => {
+                        if (filter.negate) {
+                            const allJobsDoNotMatch = stages.every(stage => (stage.jobs || []).every(job => {
+                                let result = true;
+                                switch (filter.field) {
+                                    case 'jobName':
+                                        result = job.job && job.job.toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'jobPool':
+                                        result = job.pool && JSON.stringify(job.pool).toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    default:
+                                        result = true;
+                                }
+                                result = !result;
+                                return result;
+                            }));
+                            return allJobsDoNotMatch;
+                        } else {
+                            const someJobsMatch = stages.some(stage => (stage.jobs || []).some(job => {
+                                let result = false;
+                                switch (filter.field) {
+                                    case 'jobName':
+                                        result = job.job && job.job.toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'jobPool':
+                                        result = job.pool && JSON.stringify(job.pool).toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    default:
+                                        result = false;
+                                }
+                                return result;
+                            }));
+                            return someJobsMatch;
+                        }
+                    })
+                    if (!jobFiltersResult) return false;
+                }
+
+
+                if (stepFilters.length > 0) {
+                    // for every filter is an AND condition
+                    const stepFiltersResult = stepFilters.every(filter => {
+                        if (filter.negate) {
+                            const allStepsDoNotMatch = stages.every(stage => (stage.jobs || []).every(job => (job.steps || []).every(step => {
+                                let result = true;
+                                switch (filter.field) {
+                                    case 'stepType':
+                                        result = step.type && step.type.toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'stepName':
+                                        result = step.task && step.task.toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'stepDisplayName':
+                                        result = step.displayName && step.displayName.toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'stepInputs':
+                                        result = step.inputs && JSON.stringify(step.inputs).toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'stepEnabled':
+                                        // Boolean, so check for string match or boolean match
+                                        if (typeof step.enabled === 'boolean') {
+                                            result = String(step.enabled).toLowerCase() === filter.value.toLowerCase();
+                                        } else if (typeof step.enabled === 'string') {
+                                            result = step.enabled.toLowerCase().includes(filter.value.toLowerCase());
+                                        }
+                                        break;
+                                    default:
+                                        result = true;
+                                }
+                                result = !result;
+                                return result;
+                            })));
+                            return allStepsDoNotMatch;
+                        } else {
+                            const someStepsMatch = stages.some(stage => (stage.jobs || []).some(job => (job.steps || []).some(step => {
+                                let result = false;
+                                switch (filter.field) {
+                                    case 'stepType':
+                                        result = step.type && step.type.toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'stepName':
+                                        result = step.task && step.task.toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'stepDisplayName':
+                                        result = step.displayName && step.displayName.toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'stepInputs':
+                                        result = step.inputs && JSON.stringify(step.inputs).toLowerCase().includes(filter.value.toLowerCase());
+                                        break;
+                                    case 'stepEnabled':
+                                        // Boolean, so check for string match or boolean match
+                                        if (typeof step.enabled === 'boolean') {
+                                            result = String(step.enabled).toLowerCase() === filter.value.toLowerCase();
+                                        } else if (typeof step.enabled === 'string') {
+                                            result = step.enabled.toLowerCase().includes(filter.value.toLowerCase());
+                                        }
+                                        break;
+                                    default:
+                                        result = false;
+                                }
+                                return result;
+                            })));
+                            return someStepsMatch;
+                        }
+                    })
+                    if (!stepFiltersResult) return false;
+                }
+                return true;
+            });
+            return someYamlRecipeMatches;
         });
 
         return filt_pipelines;
@@ -908,84 +1236,123 @@ const ResourceTracker = () => {
                         </Box> */}
                     </Stack>
 
+                    <Box sx={{
+                        alignItems: 'left',
+                        justifyContent: 'left',
+                        position: 'relative',
+                    }}>
+                        <IconButton
+                            aria-label="Print D3 Graph as PNG"
+                            onClick={() => {
+                                setFilteringUICollapsed(!filteringUICollapsed);
+                                // Close any open FAB panels when toggling main UI
+                                if (filteringUICollapsed) {
+                                    setResourceFilterExpanded(false);
+                                    setPipelineFilterExpanded(false);
+                                }
+                            }}
+                            sx={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}
+                            size="small"
+                        >
+                            <FilterListIcon fontSize="small" />
+                        </IconButton>
+                    </Box>
+
                     <Box sx={{ display: 'flex', flexDirection: 'row', gap: 2, width: '100%', mx: 'auto', height: '70vh', minHeight: '30vh', maxHeight: '80vh', overflow: 'hidden' }}>
+
                         {/* Filtering UI */}
-                        <Box sx={{ flex: 2, display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 2, minWidth: 0, overflowY: 'auto', maxHeight: '100%', width: '100%', textAlign: "center" }}>
-                            <Typography variant="h5" color="#e25762" gutterBottom sx={{ fontSize: '1rem' }}>
-                                Resource Filters
-                            </Typography>
+                        <Box
+                            sx={{
+                                flexShrink: 0,
+                                width: filteringUICollapsed ? 48 : "auto", // ✅ numeric target values
+                                // transition: 'width 0.3s ease-in-out',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'stretch',
+                                gap: 2,
+                                overflowY: 'auto',
+                                maxHeight: '100%',
+                                textAlign: 'center',
+                                maxWidth: '60%',
+                            }}
+                        >
 
-                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, backgroundColor: 'rgba(226,87,98,0.07)', padding: 2, borderRadius: 1 }}>
+                            <Collapse in={!filteringUICollapsed} timeout={300}>
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                    <Typography variant="h5" color="#e25762" gutterBottom sx={{ fontSize: '1rem', mb: 0 }}>
+                                        Resource Filters
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, backgroundColor: 'rgba(226,87,98,0.07)', padding: 2, borderRadius: 1 }}>
 
-                                <Box sx={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    flexDirection: 'row',
-                                    gap: 2,
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    width: '100%',
-                                    minWidth: 0,
-                                }}>
-                                    <TextField
-                                        variant="standard"
-                                        sx={{ mx: 2, maxWidth: 200 }}
-                                        label="Search by Name/ID"
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                    />
-                                    <FormControl variant="outlined" sx={{ minWidth: 150 }}>
-                                        <InputLabel id="logic-container-filter-label">Logic Container</InputLabel>
-                                        <Select
-                                            labelId="logic-container-filter-label"
-                                            value={logic_container_filter}
-                                            onChange={handleLogicContainerSelect}
-                                            label="Logic Container"
-                                        >
-                                            <MenuItem value="all">
-                                                <em>All</em>
-                                            </MenuItem>
-                                            {Object.keys(logic_containers).map((key) => (
-                                                <MenuItem key={logic_containers[key].id} value={logic_containers[key].id}>
-                                                    {logic_containers[key].name}
-                                                </MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl>
-
-                                    <FormControl variant="outlined" sx={{ minWidth: 150 }}>
-                                        <InputLabel id="compliance-state-label">Resource Protection</InputLabel>
-                                        <Select
-                                            labelId="compliance-state-label"
-                                            value={protectedState}
-                                            onChange={handleResourcesByProtectedStateChange}
-                                            label="Resource Protection"
-                                        >
-                                            <MenuItem value="all">
-                                                <em>All</em>
-                                            </MenuItem>
-                                            <MenuItem value="protected">Protected</MenuItem>
-                                            <MenuItem value="unprotected">Unprotected</MenuItem>
-                                        </Select>
-                                    </FormControl>
-                                    {resource_type_selected === 'pool_merged' && (
-                                        <>
+                                        <Box sx={{
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            flexDirection: 'row',
+                                            gap: 2,
+                                            justifyContent: 'center',
+                                            alignItems: 'center',
+                                            width: '100%',
+                                            minWidth: 0,
+                                        }}>
+                                            <TextField
+                                                variant="standard"
+                                                sx={{ mx: 2, maxWidth: 200 }}
+                                                label="Search by Name/ID"
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                            />
                                             <FormControl variant="outlined" sx={{ minWidth: 150 }}>
-                                                <InputLabel id="pool-type-label">Pool Type</InputLabel>
+                                                <InputLabel id="logic-container-filter-label">Logic Container</InputLabel>
                                                 <Select
-                                                    labelId="pool-type-label"
-                                                    value={poolType}
-                                                    onChange={(e) => setPoolType(e.target.value)}
-                                                    label="Pool Type"
+                                                    labelId="logic-container-filter-label"
+                                                    value={logic_container_filter}
+                                                    onChange={handleLogicContainerSelect}
+                                                    label="Logic Container"
                                                 >
                                                     <MenuItem value="all">
                                                         <em>All</em>
                                                     </MenuItem>
-                                                    <MenuItem value="ms-hosted">Microsoft Hosted</MenuItem>
-                                                    <MenuItem value="self-hosted">Self-Hosted</MenuItem>
+                                                    {Object.keys(logic_containers).map((key) => (
+                                                        <MenuItem key={logic_containers[key].id} value={logic_containers[key].id}>
+                                                            {logic_containers[key].name}
+                                                        </MenuItem>
+                                                    ))}
                                                 </Select>
                                             </FormControl>
-                                            {/* <FormControlLabel
+
+                                            <FormControl variant="outlined" sx={{ minWidth: 150 }}>
+                                                <InputLabel id="compliance-state-label">Resource Protection</InputLabel>
+                                                <Select
+                                                    labelId="compliance-state-label"
+                                                    value={protectedState}
+                                                    onChange={handleResourcesByProtectedStateChange}
+                                                    label="Resource Protection"
+                                                >
+                                                    <MenuItem value="all">
+                                                        <em>All</em>
+                                                    </MenuItem>
+                                                    <MenuItem value="protected">Protected</MenuItem>
+                                                    <MenuItem value="unprotected">Unprotected</MenuItem>
+                                                </Select>
+                                            </FormControl>
+                                            {resource_type_selected === 'pool_merged' && (
+                                                <>
+                                                    <FormControl variant="outlined" sx={{ minWidth: 150 }}>
+                                                        <InputLabel id="pool-type-label">Pool Type</InputLabel>
+                                                        <Select
+                                                            labelId="pool-type-label"
+                                                            value={poolType}
+                                                            onChange={(e) => setPoolType(e.target.value)}
+                                                            label="Pool Type"
+                                                        >
+                                                            <MenuItem value="all">
+                                                                <em>All</em>
+                                                            </MenuItem>
+                                                            <MenuItem value="ms-hosted">Microsoft Hosted</MenuItem>
+                                                            <MenuItem value="self-hosted">Self-Hosted</MenuItem>
+                                                        </Select>
+                                                    </FormControl>
+                                                    {/* <FormControlLabel
                                                 control={
                                                     <Checkbox
                                                         checked={singleUsePools} // Replace with appropriate state for exclusive queues
@@ -994,271 +1361,271 @@ const ResourceTracker = () => {
                                                 }
                                                 label="Show pools with exclusive use (single use)"
                                             /> */}
-                                        </>
-                                    )}
-                                </Box>
+                                                </>
+                                            )}
+                                        </Box>
 
-                                <Box sx={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    flexDirection: 'row',
-                                    gap: 2,
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    width: '100%',
-                                    minWidth: 0,
-                                }}>
-                                    <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={filterForOverprivilegedResources}
-                                                onChange={(e) => setFilterForOverprivilegedResources(e.target.checked)}
+                                        <Box sx={{
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            flexDirection: 'row',
+                                            gap: 2,
+                                            justifyContent: 'center',
+                                            alignItems: 'center',
+                                            width: '100%',
+                                            minWidth: 0,
+                                        }}>
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={filterForOverprivilegedResources}
+                                                        onChange={(e) => setFilterForOverprivilegedResources(e.target.checked)}
+                                                    />
+                                                }
+                                                label="Overprivileged"
                                             />
-                                        }
-                                        label="Overprivileged"
-                                    />
 
-                                    <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={filterForOversharedResources}
-                                                onChange={(e) => setFilterForOversharedResources(e.target.checked)}
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={filterForOversharedResources}
+                                                        onChange={(e) => setFilterForOversharedResources(e.target.checked)}
+                                                    />
+                                                }
+                                                label="Overshared"
                                             />
-                                        }
-                                        label="Overshared"
-                                    />
-                                    <FormControlLabel
-                                        sx={{ justifyContent: 'center', }}
-                                        control={
-                                            <Checkbox
-                                                checked={crossProject}
-                                                onChange={(e) => setCrossProject(e.target.checked)}
+                                            <FormControlLabel
+                                                sx={{ justifyContent: 'center', }}
+                                                control={
+                                                    <Checkbox
+                                                        checked={crossProject}
+                                                        onChange={(e) => setCrossProject(e.target.checked)}
+                                                    />
+                                                }
+                                                label="Cross Project"
                                             />
-                                        }
-                                        label="Cross Project"
-                                    />
 
-                                    {/* Tooltip explaining resource filters */}
-                                    <Tooltip
-                                        title={
-                                            <Box>
-                                                <Typography variant="body2" sx={{ mb: 1 }}>
-                                                    <Chip label="Overprivileged" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is included in more than one logic container (shared across multiple containers)
-                                                </Typography>
-                                                <Typography variant="body2" sx={{ mb: 1 }}>
-                                                    <Chip label="Overshared" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is open to all pipelines or permissioned to more than one pipeline
-                                                </Typography>
-                                                <Typography variant="body2">
-                                                    <Chip label="Cross Project" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is accessible across multiple projects
-                                                </Typography>
-                                            </Box>
-                                        }
-                                        placement="right"
-                                    >
-                                        <HelpOutlineIcon color="action" sx={{ fontSize: 24, cursor: 'pointer', ml: 2 }} />
-                                    </Tooltip>
-                                </Box>
+                                            {/* Tooltip explaining resource filters */}
+                                            <Tooltip
+                                                title={
+                                                    <Box>
+                                                        <Typography variant="body2" sx={{ mb: 1 }}>
+                                                            <Chip label="Overprivileged" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is included in more than one logic container (shared across multiple containers)
+                                                        </Typography>
+                                                        <Typography variant="body2" sx={{ mb: 1 }}>
+                                                            <Chip label="Overshared" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is open to all pipelines or permissioned to more than one pipeline
+                                                        </Typography>
+                                                        <Typography variant="body2">
+                                                            <Chip label="Cross Project" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is accessible across multiple projects
+                                                        </Typography>
+                                                    </Box>
+                                                }
+                                                placement="right"
+                                            >
+                                                <HelpOutlineIcon color="action" sx={{ fontSize: 24, cursor: 'pointer', ml: 2 }} />
+                                            </Tooltip>
+                                        </Box>
 
-                                <Box
-                                    component="span"
-                                    onClick={() => handleFilterReset('resource')}
-                                    sx={{
-                                        alignSelf: 'flex-end',
-                                        cursor: 'pointer',
-                                        color: '#1a0dab',
-                                        textDecoration: 'none',
-                                        '&:hover': {
-                                            textDecoration: 'underline',
-                                        },
-                                    }}
-                                >
-                                    Reset Resource Filters
-                                </Box>
-                            </Box>
-
-                            <Divider sx={{ mt: 4, mb: 2 }}></Divider>
-
-                            <Typography variant="h5" color="#5669b3" gutterBottom sx={{ fontSize: '1rem' }}>
-                                Pipeline Filters
-                            </Typography>
-
-
-                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, backgroundColor: 'rgba(86,105,179,0.07)', padding: 2, borderRadius: 1 }}>
-                                <Box sx={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    flexDirection: 'row',
-                                    gap: 2,
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    width: '100%',
-                                    minWidth: 0,
-                                }}>
-                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                        <TextField
-                                            variant="standard"
-                                            sx={{ mx: 2, maxWidth: 200 }}
-                                            label="Search by Name/ID"
-                                            value={searchTermPipelines}
-                                            onChange={(e) => setSearchTermPipelines(e.target.value)}
-                                        />
+                                        <Box
+                                            component="span"
+                                            onClick={() => handleFilterReset('resource')}
+                                            sx={{
+                                                alignSelf: 'flex-end',
+                                                cursor: 'pointer',
+                                                color: '#1a0dab',
+                                                textDecoration: 'none',
+                                                '&:hover': {
+                                                    textDecoration: 'underline',
+                                                },
+                                            }}
+                                        >
+                                            Reset Resource Filters
+                                        </Box>
                                     </Box>
-                                    <FormControl variant="outlined" sx={{ minWidth: 200 }}>
-                                        <InputLabel id="authz-label">Authorization Scope</InputLabel>
-                                        <Select
-                                            labelId="authz-label"
-                                            value={filterForJobAuthorizationScope}
-                                            onChange={handlePipelineAuthZScopeChange}
-                                            label="Authorization Scope"
-                                        >
-                                            <MenuItem value="all">
-                                                <em>All</em>
-                                            </MenuItem>
-                                            <MenuItem value="projectCollection">Organisation</MenuItem>
-                                            <MenuItem value="project">Project</MenuItem>
-                                        </Select>
-                                    </FormControl>
-                                    <FormControl variant="outlined" sx={{ minWidth: 200 }}>
-                                        <InputLabel id="type-label">Pipeline Type</InputLabel>
-                                        <Select
-                                            labelId="type-label"
-                                            value={filterForPipelineType}
-                                            onChange={handlePipelineTypeChange}
-                                            label="Pipeline Type"
-                                        >
-                                            <MenuItem value="all">
-                                                <em>All</em>
-                                            </MenuItem>
-                                            <MenuItem value="1">Classic</MenuItem>
-                                            <MenuItem value="2">YAML</MenuItem>
-                                        </Select>
-                                    </FormControl>
-                                </Box>
 
-                                <Box sx={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    flexDirection: 'row',
-                                    gap: 2,
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    width: '100%',
-                                    minWidth: 0,
-                                }}>
-                                    <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={pipelinesUsingFilteredResources}
-                                                onChange={(e) => setPipelinesUsingFilteredResources(e.target.checked)}
-                                            />
-                                        }
-                                        label="Permissioned"
-                                    />
-                                    <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={filterForOverprivilegedPipelines}
-                                                onChange={(e) => setFilterForOverprivilegedPipelines(e.target.checked)}
-                                            />
-                                        }
-                                        label="Overprivileged"
-                                    />
-                                    <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={filterForAlertedPipelines}
-                                                onChange={e => setFilterForAlertedPipelines(e.target.checked)}
-                                            />
-                                        }
-                                        label="Alerts"
-                                    />
-                                    <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={filterForDisabledPipelines}
-                                                onChange={(e) => setFilterForDisabledPipelines(e.target.checked)}
-                                            />
-                                        }
-                                        label="Disabled"
-                                    />
-                                    <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={filterForUnqueriablePipelines}
-                                                onChange={(e) => setFilterForUnqueriablePipelines(e.target.checked)}
-                                            />
-                                        }
-                                        label="YAML Error"
-                                    />
-                                    <Tooltip
-                                        title={
-                                            <Box>
-                                                <Typography variant="body2" sx={{ mb: 1 }}>
-                                                    <Chip label="Permissioned" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Shows pipelines that have permissions to the currently filtered resources
-                                                </Typography>
-                                                <Typography variant="body2" sx={{ mb: 1 }}>
-                                                    <Chip label="Overprivileged" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with access to resources included in more than one logic container
-                                                </Typography>
-                                                <Typography variant="body2" sx={{ mb: 1 }}>
-                                                    <Chip label="Alerts" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with builds or previews containing security alerts
-                                                </Typography>
-                                                <Typography variant="body2" sx={{ mb: 1 }}>
-                                                    <Chip label="Disabled" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines that are currently disabled (cannot be queued)
-                                                </Typography>
-                                                <Typography variant="body2">
-                                                    <Chip label="YAML Error" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with YAML errors in preview builds (unqueriable)
-                                                </Typography>
+                                    <Divider sx={{ mt: 4, mb: 2 }}></Divider>
+
+                                    <Typography variant="h5" color="#5669b3" gutterBottom sx={{ fontSize: '1rem' }}>
+                                        Pipeline Filters
+                                    </Typography>
+
+
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, backgroundColor: 'rgba(86,105,179,0.07)', padding: 2, borderRadius: 1 }}>
+                                        <Box sx={{
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            flexDirection: 'row',
+                                            gap: 2,
+                                            justifyContent: 'center',
+                                            alignItems: 'center',
+                                            width: '100%',
+                                            minWidth: 0,
+                                        }}>
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                                <TextField
+                                                    variant="standard"
+                                                    sx={{ mx: 2, maxWidth: 200 }}
+                                                    label="Search by Name/ID"
+                                                    value={searchTermPipelines}
+                                                    onChange={(e) => setSearchTermPipelines(e.target.value)}
+                                                />
                                             </Box>
-                                        }
-                                        placement="right"
-                                    >
-                                        <HelpOutlineIcon color="action" sx={{ fontSize: 24, cursor: 'pointer', ml: 2 }} />
-                                    </Tooltip>
-                                </Box>
-
-                                <Divider sx={{ mt: 2, mb: 2 }} />
-
-                                <Box sx={{ display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                                    {pipelineAdvancedFilters.map((filter, idx) => (
-                                        <Box key={idx} sx={{ display: 'flex', flexDirection: 'row', gap: 1, alignItems: 'center', mb: 1, width: '100%', overflowX: 'auto' }}>
-                                            <FormControl variant="outlined" sx={{ minWidth: 150, flex: 1 }}>
+                                            <FormControl variant="outlined" sx={{ minWidth: 200 }}>
+                                                <InputLabel id="authz-label">Authorization Scope</InputLabel>
                                                 <Select
-                                                    value={filter.field}
-                                                    onChange={e => handleAdvancedFilterChange(idx, 'field', e.target.value)}
-                                                    size="small"
-                                                    MenuProps={{
-                                                        PaperProps: {
-                                                            style: {
-                                                                maxHeight: 300,
-                                                            },
-                                                        },
-                                                    }}
+                                                    labelId="authz-label"
+                                                    value={filterForJobAuthorizationScope}
+                                                    onChange={handlePipelineAuthZScopeChange}
+                                                    label="Authorization Scope"
                                                 >
-                                                    {/* Trigger Group */}
-                                                    <ListSubheader style={{ color: '#1976d2' }}>Trigger</ListSubheader>
-                                                    <MenuItem value="trigger" sx={{ backgroundColor: '#e3f2fd', borderRadius: 0 }}>Trigger</MenuItem>
-
-                                                    {/* Stage Group */}
-                                                    <ListSubheader style={{ color: '#388e3c' }}>Stage</ListSubheader>
-                                                    <MenuItem value="stageName" sx={{ backgroundColor: '#e8f5e9', borderRadius: 0 }}>Stage Name</MenuItem>
-                                                    <MenuItem value="stagePool" sx={{ backgroundColor: '#e8f5e9', borderRadius: 0 }}>Stage Pool</MenuItem>
-
-                                                    {/* Job Group */}
-                                                    <ListSubheader style={{ color: '#f57c00' }}>Job</ListSubheader>
-                                                    <MenuItem value="jobName" sx={{ backgroundColor: '#fff3e0', borderRadius: 0 }}>Job Name</MenuItem>
-                                                    <MenuItem value="jobPool" sx={{ backgroundColor: '#fff3e0', borderRadius: 0 }}>Job Pool</MenuItem>
-
-                                                    {/* Step Group */}
-                                                    <ListSubheader style={{ color: '#6a1b9a' }}>Step</ListSubheader>
-                                                    <MenuItem value="stepType" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Type</MenuItem>
-                                                    <MenuItem value="stepName" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Name</MenuItem>
-                                                    <MenuItem value="stepDisplayName" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Display Name</MenuItem>
-                                                    <MenuItem value="stepEnabled" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Enabled</MenuItem>
-                                                    <MenuItem value="stepInputs" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Inputs</MenuItem>
+                                                    <MenuItem value="all">
+                                                        <em>All</em>
+                                                    </MenuItem>
+                                                    <MenuItem value="projectCollection">Organisation</MenuItem>
+                                                    <MenuItem value="project">Project</MenuItem>
                                                 </Select>
                                             </FormControl>
-                                            <FormControl variant="outlined" sx={{ minWidth: 100, flex: 1 }}>
-                                                {/* <Select
+                                            <FormControl variant="outlined" sx={{ minWidth: 200 }}>
+                                                <InputLabel id="type-label">Pipeline Type</InputLabel>
+                                                <Select
+                                                    labelId="type-label"
+                                                    value={filterForPipelineType}
+                                                    onChange={handlePipelineTypeChange}
+                                                    label="Pipeline Type"
+                                                >
+                                                    <MenuItem value="all">
+                                                        <em>All</em>
+                                                    </MenuItem>
+                                                    <MenuItem value="1">Classic</MenuItem>
+                                                    <MenuItem value="2">YAML</MenuItem>
+                                                </Select>
+                                            </FormControl>
+                                        </Box>
+
+                                        <Box sx={{
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            flexDirection: 'row',
+                                            gap: 2,
+                                            justifyContent: 'center',
+                                            alignItems: 'center',
+                                            width: '100%',
+                                            minWidth: 0,
+                                        }}>
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={pipelinesUsingFilteredResources}
+                                                        onChange={(e) => setPipelinesUsingFilteredResources(e.target.checked)}
+                                                    />
+                                                }
+                                                label="Permissioned"
+                                            />
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={filterForOverprivilegedPipelines}
+                                                        onChange={(e) => setFilterForOverprivilegedPipelines(e.target.checked)}
+                                                    />
+                                                }
+                                                label="Overprivileged"
+                                            />
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={filterForAlertedPipelines}
+                                                        onChange={e => setFilterForAlertedPipelines(e.target.checked)}
+                                                    />
+                                                }
+                                                label="Alerts"
+                                            />
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={filterForDisabledPipelines}
+                                                        onChange={(e) => setFilterForDisabledPipelines(e.target.checked)}
+                                                    />
+                                                }
+                                                label="Disabled"
+                                            />
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={filterForUnqueriablePipelines}
+                                                        onChange={(e) => setFilterForUnqueriablePipelines(e.target.checked)}
+                                                    />
+                                                }
+                                                label="YAML Error"
+                                            />
+                                            <Tooltip
+                                                title={
+                                                    <Box>
+                                                        <Typography variant="body2" sx={{ mb: 1 }}>
+                                                            <Chip label="Permissioned" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Shows pipelines that have permissions to the currently filtered resources
+                                                        </Typography>
+                                                        <Typography variant="body2" sx={{ mb: 1 }}>
+                                                            <Chip label="Overprivileged" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with access to resources included in more than one logic container
+                                                        </Typography>
+                                                        <Typography variant="body2" sx={{ mb: 1 }}>
+                                                            <Chip label="Alerts" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with builds or previews containing security alerts
+                                                        </Typography>
+                                                        <Typography variant="body2" sx={{ mb: 1 }}>
+                                                            <Chip label="Disabled" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines that are currently disabled (cannot be queued)
+                                                        </Typography>
+                                                        <Typography variant="body2">
+                                                            <Chip label="YAML Error" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with YAML errors in preview builds (unqueriable)
+                                                        </Typography>
+                                                    </Box>
+                                                }
+                                                placement="right"
+                                            >
+                                                <HelpOutlineIcon color="action" sx={{ fontSize: 24, cursor: 'pointer', ml: 2 }} />
+                                            </Tooltip>
+                                        </Box>
+
+                                        <Divider sx={{ mt: 2, mb: 2 }} />
+
+                                        <Box sx={{ display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                            {pipelineAdvancedFilters.map((filter, idx) => (
+                                                <Box key={idx} sx={{ display: 'flex', flexDirection: 'row', gap: 1, alignItems: 'center', mb: 1, width: '100%', overflowX: 'auto' }}>
+                                                    <FormControl variant="outlined" sx={{ minWidth: 150, flex: 1 }}>
+                                                        <Select
+                                                            value={filter.field}
+                                                            onChange={e => handleAdvancedFilterChange(idx, 'field', e.target.value)}
+                                                            size="small"
+                                                            MenuProps={{
+                                                                PaperProps: {
+                                                                    style: {
+                                                                        maxHeight: 300,
+                                                                    },
+                                                                },
+                                                            }}
+                                                        >
+                                                            {/* Trigger Group */}
+                                                            <ListSubheader style={{ color: '#1976d2' }}>Trigger</ListSubheader>
+                                                            <MenuItem value="trigger" sx={{ backgroundColor: '#e3f2fd', borderRadius: 0 }}>Trigger</MenuItem>
+
+                                                            {/* Stage Group */}
+                                                            <ListSubheader style={{ color: '#388e3c' }}>Stage</ListSubheader>
+                                                            <MenuItem value="stageName" sx={{ backgroundColor: '#e8f5e9', borderRadius: 0 }}>Stage Name</MenuItem>
+                                                            <MenuItem value="stagePool" sx={{ backgroundColor: '#e8f5e9', borderRadius: 0 }}>Stage Pool</MenuItem>
+
+                                                            {/* Job Group */}
+                                                            <ListSubheader style={{ color: '#f57c00' }}>Job</ListSubheader>
+                                                            <MenuItem value="jobName" sx={{ backgroundColor: '#fff3e0', borderRadius: 0 }}>Job Name</MenuItem>
+                                                            <MenuItem value="jobPool" sx={{ backgroundColor: '#fff3e0', borderRadius: 0 }}>Job Pool</MenuItem>
+
+                                                            {/* Step Group */}
+                                                            <ListSubheader style={{ color: '#6a1b9a' }}>Step</ListSubheader>
+                                                            <MenuItem value="stepType" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Type</MenuItem>
+                                                            <MenuItem value="stepName" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Name</MenuItem>
+                                                            <MenuItem value="stepDisplayName" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Display Name</MenuItem>
+                                                            <MenuItem value="stepEnabled" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Enabled</MenuItem>
+                                                            <MenuItem value="stepInputs" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Inputs</MenuItem>
+                                                        </Select>
+                                                    </FormControl>
+                                                    <FormControl variant="outlined" sx={{ minWidth: 100, flex: 1 }}>
+                                                        {/* <Select
                                                     value={filter.operator}
                                                     onChange={e => handleAdvancedFilterChange(idx, 'operator', e.target.value)}
                                                     size="small"
@@ -1266,57 +1633,60 @@ const ResourceTracker = () => {
                                                     <MenuItem disabled value="equals">Equals</MenuItem>
                                                     <MenuItem value="contains">Contains</MenuItem>
                                                 </Select> */}
-                                                <Typography variant="body2" sx={{ color: 'grey.600', alignSelf: 'center', minWidth: 100, textAlign: 'center' }}>
-                                                    contains
-                                                </Typography>
-                                            </FormControl>
-                                            <TextField
-                                                size="small"
-                                                variant="outlined"
-                                                value={filter.value}
-                                                onChange={e => handleAdvancedFilterChange(idx, 'value', e.target.value)}
-                                                placeholder="Value"
-                                                sx={{ minWidth: 120, flex: 2 }}
-                                            />
-                                            <FormControlLabel
-                                                control={
-                                                    <Checkbox
-                                                        checked={!!filter.negate}
-                                                        onChange={e => handleAdvancedFilterChange(idx, 'negate', e.target.checked)}
+                                                        <Typography variant="body2" sx={{ color: 'grey.600', alignSelf: 'center', minWidth: 100, textAlign: 'center' }}>
+                                                            contains
+                                                        </Typography>
+                                                    </FormControl>
+                                                    <TextField
+                                                        size="small"
+                                                        variant="outlined"
+                                                        value={filter.value}
+                                                        onChange={e => handleAdvancedFilterChange(idx, 'value', e.target.value)}
+                                                        placeholder="Value"
+                                                        sx={{ minWidth: 120, flex: 2 }}
                                                     />
-                                                }
-                                                label="Negate"
-                                                sx={{ flex: 0 }}
-                                            />
-                                            {idx === pipelineAdvancedFilters.length - 1 && (
-                                                <Button onClick={handleAddAdvancedFilter} color="primary" size="small" sx={{ minWidth: 0, px: 1, flex: 0 }}>AND</Button>
+                                                    <FormControlLabel
+                                                        control={
+                                                            <Checkbox
+                                                                checked={!!filter.negate}
+                                                                onChange={e => handleAdvancedFilterChange(idx, 'negate', e.target.checked)}
+                                                            />
+                                                        }
+                                                        label="Negate"
+                                                        sx={{ flex: 0 }}
+                                                    />
+                                                    {idx === pipelineAdvancedFilters.length - 1 && (
+                                                        <Button onClick={handleAddAdvancedFilter} color="primary" size="small" sx={{ minWidth: 0, px: 1, flex: 0 }}>AND</Button>
 
-                                            )}
-                                            <Button onClick={() => handleRemoveAdvancedFilter(idx)} color="error" size="small" sx={{ minWidth: 0, px: 1, flex: 0 }} disabled={pipelineAdvancedFilters.length === 1}>x</Button>
+                                                    )}
+                                                    <Button onClick={() => handleRemoveAdvancedFilter(idx)} color="error" size="small" sx={{ minWidth: 0, px: 1, flex: 0 }} disabled={pipelineAdvancedFilters.length === 1}>x</Button>
+                                                </Box>
+                                            ))}
                                         </Box>
-                                    ))}
-                                </Box>
 
 
-                                <Box
-                                    component="span"
-                                    onClick={() => handleFilterReset('pipeline')}
-                                    sx={{
-                                        alignSelf: 'flex-end',
-                                        cursor: 'pointer',
-                                        color: '#1a0dab',
-                                        textDecoration: 'none',
-                                        '&:hover': {
-                                            textDecoration: 'underline',
-                                        },
-                                    }}
-                                >
-                                    Reset Pipeline Filters
+                                        <Box
+                                            component="span"
+                                            onClick={() => handleFilterReset('pipeline')}
+                                            sx={{
+                                                alignSelf: 'flex-end',
+                                                cursor: 'pointer',
+                                                color: '#1a0dab',
+                                                textDecoration: 'none',
+                                                '&:hover': {
+                                                    textDecoration: 'underline',
+                                                },
+                                            }}
+                                        >
+                                            Reset Pipeline Filters
+                                        </Box>
+                                    </Box>
                                 </Box>
-                            </Box>
+                            </Collapse>
                         </Box>
 
                         {/* D3JSResource Component */}
+
                         <Box
                             sx={{
                                 flex: d3Flex,
@@ -1331,28 +1701,6 @@ const ResourceTracker = () => {
                                 transition: 'flex 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
                             }}
                         >
-                            <Box sx={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}>
-                                <Button
-                                    variant="contained"
-                                    color="grey"
-                                    size="small"
-                                    onClick={() => setD3Flex(d3Flex === 3 ? 1 : 3)}
-                                >
-                                    {d3Flex === 3 ? (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center' }}>&#8594;</span>
-                                    ) : (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center' }}>&#8592;</span>
-                                    )}
-                                </Button>
-                            </Box>
-                            <IconButton
-                                aria-label="Expand D3 View"
-                                onClick={() => setD3Open(true)}
-                                sx={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}
-                                size="small"
-                            >
-                                <OpenInFullIcon fontSize="small" />
-                            </IconButton>
                             <D3JSResource
                                 selectedType={resource_type_selected}
                                 filteredProtectedResources={filteredProtectedResources}
@@ -1362,36 +1710,9 @@ const ResourceTracker = () => {
                                 projects={projects}
                                 sx={{ height: '100%', width: '100%' }}
                             />
-                            <Dialog
-                                open={d3Open}
-                                onClose={() => setD3Open(false)}
-                                maxWidth="xl"
-                                fullWidth
-                                disableEnforceFocus
-                                disableRestoreFocus
-                                PaperProps={{ sx: { height: '90vh', width: '90vw', p: 2 } }}
-                            >
-                                <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
-                                    <IconButton
-                                        aria-label="Close D3 View"
-                                        onClick={() => setD3Open(false)}
-                                        sx={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}
-                                        size="small"
-                                    >
-                                        <span style={{ fontWeight: 'bold', fontSize: 18 }}>&times;</span>
-                                    </IconButton>
-                                    <D3JSResource
-                                        selectedType={resource_type_selected}
-                                        filteredProtectedResources={filteredProtectedResources}
-                                        builds={filteredBuilds}
-                                        pipelines={filteredPipelines}
-                                        logic_containers={logic_containers}
-                                        projects={projects}
-                                    />
-                                </Box>
-                            </Dialog>
                         </Box>
                     </Box>
+
 
                     <Box sx={{ display: 'flex', flexDirection: 'row', gap: 2, width: '100%', maxWidth: "100%", mx: 'auto' }}>
                         <ResourceTable
@@ -1425,6 +1746,662 @@ const ResourceTracker = () => {
                     </Box>
                 </>
             )}
+
+            {/* Floating Action Buttons */}
+            <Box sx={{
+                position: 'fixed',
+                bottom: 24,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 1100,
+                display: 'flex',
+                gap: 2
+            }}>
+                <Fab
+                    variant="extended"
+                    color="primary"
+                    aria-label="load search"
+                    onClick={() => setLoadDialogOpen(true)}
+                    size="medium"
+                    sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1
+                    }}
+                >
+                    <SearchIcon />
+                    {selectedSavedSearch && (
+                        <>
+                            <Typography sx={{ ml: 1, fontWeight: 500 }}>
+                                {selectedSavedSearch.name}
+                            </Typography>
+                            <Box
+                                component="span"
+                                onClick={handleClearSelectedSearch}
+                                sx={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'inherit',
+                                    ml: 1,
+                                    p: 0.5,
+                                    borderRadius: '50%',
+                                    cursor: 'pointer',
+                                    '&:hover': {
+                                        backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                                    }
+                                }}
+                            >
+                                <CloseIcon fontSize="small" />
+                            </Box>
+                        </>
+                    )}
+                </Fab>
+                <Fab
+                    variant="extended"
+                    color="success"
+                    aria-label="save search"
+                    onClick={() => setSaveDialogOpen(true)}
+                    size="medium"
+                    disabled={!(isFilteredResource > 0 || isFilteredPipeline > 0)}
+                    sx={{
+                        transition: 'opacity 0.3s ease'
+                    }}
+                >
+                    <SaveAsIcon />
+                </Fab>
+                <Fab
+                    variant="extended"
+                    color="error"
+                    aria-label="reset filters"
+                    onClick={() => handleFilterReset(false)}
+                    size="medium"
+                    disabled={!(isFilteredResource > 0 || isFilteredPipeline > 0)}
+                    sx={{
+                        transition: 'opacity 0.3s ease'
+                    }}
+                >
+                    <CloseIcon />
+                </Fab>
+            </Box>
+
+            {/* Resource Filter Fab - Bottom Left - Show when main UI is collapsed or user scrolled past 45% */}
+            {(filteringUICollapsed || showFabFilters) && (
+                <ClickAwayListener onClickAway={() => setResourceFilterExpanded(false)}>
+                    <Box sx={{
+                        position: 'fixed',
+                        bottom: 24,
+                        left: '0%',
+                        transform: 'translateX(+5%)',
+                        zIndex: 1000,
+                        display: 'flex',
+                        flexDirection: 'column-reverse',
+                        alignItems: 'flex-start',
+                        gap: 2
+                    }}>
+                        <Collapse in={resourceFilterExpanded} timeout={300}>
+                            <Paper
+                                elevation={8}
+                                sx={{
+                                    mb: 2,
+                                    p: 3,
+                                    backgroundColor: 'rgba(226,87,98,0.95)',
+                                    backdropFilter: 'blur(10px)',
+                                    borderRadius: 3,
+                                    maxWidth: 715,
+                                    minWidth: 500,
+                                    maxHeight: '60vh',
+                                    overflowY: 'auto'
+                                }}
+                            >
+                                <Typography variant="h6" color="white" sx={{ mb: 2, fontSize: '1rem', fontWeight: 600 }}>
+                                    Resource Filters
+                                </Typography>
+
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                    <Box sx={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: 2,
+                                        alignItems: 'center',
+                                    }}>
+                                        <TextField
+                                            variant="outlined"
+                                            size="small"
+                                            sx={{
+                                                minWidth: 150,
+                                                '& .MuiOutlinedInput-root': {
+                                                    backgroundColor: 'rgba(255,255,255,0.9)',
+                                                    borderRadius: 1
+                                                }
+                                            }}
+                                            placeholder="Search by Name/ID"
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                        />
+                                        <FormControl variant="outlined" size="small" sx={{ minWidth: 140 }}>
+                                            {/* <InputLabel sx={{ backgroundColor: 'rgba(255,255,255,0.9)', px: 1 }}>Logic Container</InputLabel> */}
+                                            <Select
+                                                value={logic_container_filter}
+                                                onChange={handleLogicContainerSelect}
+                                                label="Logic Container"
+                                                sx={{ backgroundColor: 'rgba(255,255,255,0.9)' }}
+                                            >
+                                                <MenuItem value="all"><em>Any Logic Containers</em></MenuItem>
+                                                {Object.keys(logic_containers).map((key) => (
+                                                    <MenuItem key={logic_containers[key].id} value={logic_containers[key].id}>
+                                                        {logic_containers[key].name}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                        <FormControl variant="outlined" size="small" sx={{ minWidth: 140 }}>
+                                            {/* <InputLabel sx={{ backgroundColor: 'rgba(255,255,255,0.9)', px: 1 }}>Resource Protection</InputLabel> */}
+                                            <Select
+                                                value={protectedState}
+                                                onChange={handleResourcesByProtectedStateChange}
+                                                label="Resource Protection"
+                                                sx={{ backgroundColor: 'rgba(255,255,255,0.9)' }}
+                                            >
+                                                <MenuItem value="all"><em>Any Protection State</em></MenuItem>
+                                                <MenuItem value="protected">Protected</MenuItem>
+                                                <MenuItem value="unprotected">Unprotected</MenuItem>
+                                            </Select>
+                                        </FormControl>
+                                        {resource_type_selected === 'pool_merged' && (
+                                            <FormControl variant="outlined" size="small" sx={{ minWidth: 140 }}>
+                                                {/* <InputLabel sx={{ backgroundColor: 'rgba(255,255,255,0.9)', px: 1 }}>Pool Type</InputLabel> */}
+                                                <Select
+                                                    value={poolType}
+                                                    onChange={(e) => setPoolType(e.target.value)}
+                                                    label="Pool Type"
+                                                    sx={{ backgroundColor: 'rgba(255,255,255,0.9)' }}
+                                                >
+                                                    <MenuItem value="all"><em>Any Pool Type</em></MenuItem>
+                                                    <MenuItem value="ms-hosted">Microsoft Hosted</MenuItem>
+                                                    <MenuItem value="self-hosted">Self-Hosted</MenuItem>
+                                                </Select>
+                                            </FormControl>
+                                        )}
+                                    </Box>
+
+                                    <Box sx={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: 2,
+                                        alignItems: 'center',
+                                    }}>
+
+                                    </Box>
+
+                                    <Box sx={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: 1,
+                                        alignItems: 'center',
+                                    }}>
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={filterForOverprivilegedResources}
+                                                    onChange={(e) => setFilterForOverprivilegedResources(e.target.checked)}
+                                                    sx={{ color: 'white', '&.Mui-checked': { color: 'white' } }}
+                                                />
+                                            }
+                                            label={<Typography variant="body2" color="white">Overprivileged</Typography>}
+                                        />
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={filterForOversharedResources}
+                                                    onChange={(e) => setFilterForOversharedResources(e.target.checked)}
+                                                    sx={{ color: 'white', '&.Mui-checked': { color: 'white' } }}
+                                                />
+                                            }
+                                            label={<Typography variant="body2" color="white">Overshared</Typography>}
+                                        />
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={crossProject}
+                                                    onChange={(e) => setCrossProject(e.target.checked)}
+                                                    sx={{ color: 'white', '&.Mui-checked': { color: 'white' } }}
+                                                />
+                                            }
+                                            label={<Typography variant="body2" color="white">Cross Project</Typography>}
+                                        />
+                                        <Tooltip
+                                            title={
+                                                <Box>
+                                                    <Typography variant="body2" sx={{ mb: 1 }}>
+                                                        <Chip label="Overprivileged" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is included in more than one logic container
+                                                    </Typography>
+                                                    <Typography variant="body2" sx={{ mb: 1 }}>
+                                                        <Chip label="Overshared" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is open to all pipelines or permissioned to more than one pipeline
+                                                    </Typography>
+                                                    <Typography variant="body2">
+                                                        <Chip label="Cross Project" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is accessible across multiple projects
+                                                    </Typography>
+                                                </Box>
+                                            }
+                                            placement="top"
+                                        >
+                                            <HelpOutlineIcon sx={{ color: 'white', fontSize: 20, cursor: 'pointer' }} />
+                                        </Tooltip>
+                                    </Box>
+
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                                        <Typography
+                                            variant="body2"
+                                            onClick={() => handleFilterReset('resource')}
+                                            sx={{
+                                                color: 'white',
+                                                textDecoration: 'underline',
+                                                cursor: 'pointer',
+                                                '&:hover': { opacity: 0.8 }
+                                            }}
+                                        >
+                                            Reset Filters
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            </Paper>
+                        </Collapse>
+
+                        <Fab
+                            variant="extended"
+                            color="secondary"
+                            aria-label="resource filters"
+                            onClick={() => setResourceFilterExpanded(!resourceFilterExpanded)}
+                            size="medium"
+                            sx={{
+                                bgcolor: '#e25762',
+                                color: 'white',
+                                '&:hover': {
+                                    bgcolor: '#d94450',
+                                },
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
+                                px: 3
+                            }}
+                        >
+                            <FilterListIcon />
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                Resource Filters
+                            </Typography>
+                            {isFilteredResource > 0 && (
+                                <Chip
+                                    label={isFilteredResource}
+                                    size="small"
+                                    sx={{
+                                        bgcolor: 'rgba(255, 255, 255, 0.98)',
+                                        color: 'white',
+                                        height: 20,
+                                        fontSize: '0.75rem'
+                                    }}
+                                />
+                            )}
+                            {resourceFilterExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                        </Fab>
+                    </Box>
+                </ClickAwayListener>
+            )}
+
+            {/* Pipeline Filter Fab - Bottom Right - Show when main UI is collapsed or user scrolled past 45% */}
+            {(filteringUICollapsed || showFabFilters) && (
+                <ClickAwayListener onClickAway={() => setPipelineFilterExpanded(false)}>
+                    <Box sx={{
+                        position: 'fixed',
+                        bottom: 24,
+                        right: '0%',
+                        transform: 'translateX(-5%)',
+                        zIndex: 1000,
+                        display: 'flex',
+                        flexDirection: 'column-reverse',
+                        alignItems: 'flex-end',
+                        gap: 2
+                    }}>
+                        <Collapse in={pipelineFilterExpanded} timeout={300}>
+                            <Paper
+                                elevation={8}
+                                sx={{
+                                    mb: 2,
+                                    p: 3,
+                                    backgroundColor: 'rgba(86,105,179,0.95)',
+                                    backdropFilter: 'blur(10px)',
+                                    borderRadius: 3,
+                                    maxWidth: 715,
+                                    minWidth: 500,
+                                    maxHeight: '60vh',
+                                    overflowY: 'auto'
+                                }}
+                            >
+                                <Typography variant="h6" color="white" sx={{ mb: 2, fontSize: '1rem', fontWeight: 600 }}>
+                                    Pipeline Filters
+                                </Typography>
+
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                    <Box sx={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: 2,
+                                        alignItems: 'center',
+                                    }}>
+                                        <TextField
+                                            variant="outlined"
+                                            size="small"
+                                            sx={{
+                                                minWidth: 150,
+                                                '& .MuiOutlinedInput-root': {
+                                                    backgroundColor: 'rgba(255,255,255,0.9)',
+                                                    borderRadius: 1
+                                                }
+                                            }}
+                                            placeholder="Search by Name/ID"
+                                            value={searchTermPipelines}
+                                            onChange={(e) => setSearchTermPipelines(e.target.value)}
+                                        />
+                                        <FormControl variant="outlined" size="small" sx={{ minWidth: 150 }}>
+                                            {/* <InputLabel sx={{ backgroundColor: 'rgba(255,255,255,0.9)', px: 1 }}>Authorization Scope</InputLabel> */}
+                                            <Select
+                                                value={filterForJobAuthorizationScope}
+                                                onChange={handlePipelineAuthZScopeChange}
+                                                label="Authorization Scope"
+                                                sx={{ backgroundColor: 'rgba(255,255,255,0.9)' }}
+                                            >
+                                                <MenuItem value="all"><em>Any Authorization Scope</em></MenuItem>
+                                                <MenuItem value="projectCollection">Organisation</MenuItem>
+                                                <MenuItem value="project">Project</MenuItem>
+                                            </Select>
+                                        </FormControl>
+                                        <FormControl variant="outlined" size="small" sx={{ minWidth: 120 }}>
+                                            {/* <InputLabel sx={{ backgroundColor: 'rgba(255,255,255,0.9)', px: 1 }}>Pipeline Type</InputLabel> */}
+                                            <Select
+                                                value={filterForPipelineType}
+                                                onChange={handlePipelineTypeChange}
+                                                label="Pipeline Type"
+                                                sx={{ backgroundColor: 'rgba(255,255,255,0.9)' }}
+                                            >
+                                                <MenuItem value="all"><em>Any Pipeline Type</em></MenuItem>
+                                                <MenuItem value="1">Classic</MenuItem>
+                                                <MenuItem value="2">YAML</MenuItem>
+                                            </Select>
+                                        </FormControl>
+                                    </Box>
+
+                                    <Box sx={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: 1,
+                                        alignItems: 'center',
+                                    }}>
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={pipelinesUsingFilteredResources}
+                                                    onChange={(e) => setPipelinesUsingFilteredResources(e.target.checked)}
+                                                    sx={{ color: 'white', '&.Mui-checked': { color: 'white' } }}
+                                                />
+                                            }
+                                            label={<Typography variant="body2" color="white">Permissioned</Typography>}
+                                        />
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={filterForOverprivilegedPipelines}
+                                                    onChange={(e) => setFilterForOverprivilegedPipelines(e.target.checked)}
+                                                    sx={{ color: 'white', '&.Mui-checked': { color: 'white' } }}
+                                                />
+                                            }
+                                            label={<Typography variant="body2" color="white">Overprivileged</Typography>}
+                                        />
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={filterForAlertedPipelines}
+                                                    onChange={e => setFilterForAlertedPipelines(e.target.checked)}
+                                                    sx={{ color: 'white', '&.Mui-checked': { color: 'white' } }}
+                                                />
+                                            }
+                                            label={<Typography variant="body2" color="white">Alerts</Typography>}
+                                        />
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={filterForDisabledPipelines}
+                                                    onChange={(e) => setFilterForDisabledPipelines(e.target.checked)}
+                                                    sx={{ color: 'white', '&.Mui-checked': { color: 'white' } }}
+                                                />
+                                            }
+                                            label={<Typography variant="body2" color="white">Disabled</Typography>}
+                                        />
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={filterForUnqueriablePipelines}
+                                                    onChange={(e) => setFilterForUnqueriablePipelines(e.target.checked)}
+                                                    sx={{ color: 'white', '&.Mui-checked': { color: 'white' } }}
+                                                />
+                                            }
+                                            label={<Typography variant="body2" color="white">YAML Error</Typography>}
+                                        />
+                                        <Tooltip
+                                            title={
+                                                <Box>
+                                                    <Typography variant="body2" sx={{ mb: 1 }}>
+                                                        <Chip label="Permissioned" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Shows pipelines that have permissions to the currently filtered resources
+                                                    </Typography>
+                                                    <Typography variant="body2" sx={{ mb: 1 }}>
+                                                        <Chip label="Overprivileged" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with access to resources included in more than one logic container
+                                                    </Typography>
+                                                    <Typography variant="body2" sx={{ mb: 1 }}>
+                                                        <Chip label="Alerts" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with builds or previews containing security alerts
+                                                    </Typography>
+                                                    <Typography variant="body2" sx={{ mb: 1 }}>
+                                                        <Chip label="Disabled" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines that are currently disabled (cannot be queued)
+                                                    </Typography>
+                                                    <Typography variant="body2">
+                                                        <Chip label="YAML Error" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with YAML errors in preview builds (unqueriable)
+                                                    </Typography>
+                                                </Box>
+                                            }
+                                            placement="top"
+                                        >
+                                            <HelpOutlineIcon sx={{ color: 'white', fontSize: 20, cursor: 'pointer' }} />
+                                        </Tooltip>
+                                    </Box>
+
+                                    <Box sx={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: 1,
+                                        alignItems: 'center',
+                                    }}>
+
+                                    </Box>
+
+                                    <Divider sx={{ borderColor: 'rgba(255,255,255,0.3)', my: 1 }} />
+
+                                    <Typography variant="body2" color="white" sx={{ fontWeight: 500, mb: 1 }}>
+                                        Advanced Filters
+                                    </Typography>
+
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                        {pipelineAdvancedFilters.map((filter, idx) => (
+                                            <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                                                <FormControl variant="outlined" size="small" sx={{ minWidth: 120 }}>
+                                                    <Select
+                                                        value={filter.field}
+                                                        onChange={e => handleAdvancedFilterChange(idx, 'field', e.target.value)}
+                                                        sx={{ backgroundColor: 'rgba(255,255,255,0.9)' }}
+                                                        MenuProps={{
+                                                            PaperProps: {
+                                                                style: { maxHeight: 300 },
+                                                            },
+                                                        }}
+                                                    >
+                                                        <ListSubheader style={{ color: '#1976d2' }}>Trigger</ListSubheader>
+                                                        <MenuItem value="trigger">Trigger</MenuItem>
+                                                        <ListSubheader style={{ color: '#388e3c' }}>Stage</ListSubheader>
+                                                        <MenuItem value="stageName">Stage Name</MenuItem>
+                                                        <MenuItem value="stagePool">Stage Pool</MenuItem>
+                                                        <ListSubheader style={{ color: '#f57c00' }}>Job</ListSubheader>
+                                                        <MenuItem value="jobName">Job Name</MenuItem>
+                                                        <MenuItem value="jobPool">Job Pool</MenuItem>
+                                                        <ListSubheader style={{ color: '#6a1b9a' }}>Step</ListSubheader>
+                                                        <MenuItem value="stepType">Step Type</MenuItem>
+                                                        <MenuItem value="stepName">Step Name</MenuItem>
+                                                        <MenuItem value="stepDisplayName">Display Name</MenuItem>
+                                                        <MenuItem value="stepEnabled">Step Enabled</MenuItem>
+                                                        <MenuItem value="stepInputs">Step Inputs</MenuItem>
+                                                    </Select>
+                                                </FormControl>
+                                                <Typography variant="body2" color="white" sx={{ minWidth: 60, textAlign: 'center' }}>
+                                                    contains
+                                                </Typography>
+                                                <TextField
+                                                    size="small"
+                                                    variant="outlined"
+                                                    value={filter.value}
+                                                    onChange={e => handleAdvancedFilterChange(idx, 'value', e.target.value)}
+                                                    placeholder="Value"
+                                                    sx={{
+                                                        minWidth: 100,
+                                                        '& .MuiOutlinedInput-root': {
+                                                            backgroundColor: 'rgba(255,255,255,0.9)',
+                                                            borderRadius: 1
+                                                        }
+                                                    }}
+                                                />
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={!!filter.negate}
+                                                            onChange={e => handleAdvancedFilterChange(idx, 'negate', e.target.checked)}
+                                                            sx={{ color: 'white', '&.Mui-checked': { color: 'white' } }}
+                                                        />
+                                                    }
+                                                    label={<Typography variant="body2" color="white">Negate</Typography>}
+                                                />
+                                                {idx === pipelineAdvancedFilters.length - 1 && (
+                                                    <Button
+                                                        onClick={handleAddAdvancedFilter}
+                                                        variant="outlined"
+                                                        size="small"
+                                                        sx={{
+                                                            color: 'white',
+                                                            borderColor: 'white',
+                                                            '&:hover': { borderColor: 'white', backgroundColor: 'rgba(255,255,255,0.1)' }
+                                                        }}
+                                                    >
+                                                        AND
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    onClick={() => handleRemoveAdvancedFilter(idx)}
+                                                    variant="filled"
+                                                    color="error"
+                                                    size="small"
+                                                    sx={{ minWidth: 40 }}
+                                                >
+                                                    <DeleteForeverSharpIcon fontSize="small" />
+                                                </Button>
+                                            </Box>
+                                        ))}
+                                    </Box>
+
+                                    <Box sx={{
+                                        display: 'flex', justifyContent: 'right', mt: 1
+                                    }}>
+                                        <Typography
+                                            variant="body2"
+                                            onClick={() => handleFilterReset('pipeline')}
+                                            sx={{
+                                                color: 'white',
+                                                textDecoration: 'underline',
+                                                cursor: 'pointer',
+                                                '&:hover': { opacity: 0.8 },
+                                            }}
+                                        >
+                                            Reset Filters
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            </Paper>
+                        </Collapse>
+
+                        <Fab
+                            variant="extended"
+                            color="secondary"
+                            aria-label="pipeline filters"
+                            onClick={() => setPipelineFilterExpanded(!pipelineFilterExpanded)}
+                            size="medium"
+                            sx={{
+                                bgcolor: '#5669b3',
+                                color: 'white',
+                                '&:hover': {
+                                    bgcolor: '#4a5a9f',
+                                },
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
+                                px: 3
+                            }}
+                        >
+                            <TuneIcon />
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                Pipeline Filters
+                            </Typography>
+                            {isFilteredPipeline > 0 && (
+                                <Chip
+                                    label={isFilteredPipeline}
+                                    size="small"
+                                    sx={{
+                                        bgcolor: 'rgba(255, 255, 255, 0.98)',
+
+                                        color: 'white',
+                                        height: 20,
+                                        fontSize: '0.75rem'
+                                    }}
+                                />
+                            )}
+                            {pipelineFilterExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                        </Fab>
+                    </Box>
+                </ClickAwayListener>
+            )}
+
+            {/* Save Search Dialog */}
+            <SaveSearchDialog
+                open={saveDialogOpen}
+                initialName={getInitialDialogValues().name}
+                initialDescription={getInitialDialogValues().description}
+                isFilteredResource={isFilteredResource}
+                isFilteredPipeline={isFilteredPipeline}
+                editingSearchId={editingSearchId}
+                isSaving={isSaving}
+                onClose={handleCancelEdit}
+                onSave={handleSaveSearch}
+            />
+
+            <LoadSearchDialog
+                open={loadDialogOpen}
+                savedSearches={savedSearches}
+                isDeleting={isDeleting}
+                onClose={() => setLoadDialogOpen(false)}
+                onLoadSearch={handleLoadSearch}
+                onEditSearch={handleEditSearch}
+                onDeleteSearch={handleDeleteSearch}
+            />
+
+            {/* Confirmation Dialog */}
+            <ConfirmDeleteDialog
+                open={confirmDialogOpen}
+                isDeleting={isDeleting}
+                onClose={handleCancelDelete}
+                onConfirm={handleConfirmDelete}
+            />
         </Box>
     );
 };
