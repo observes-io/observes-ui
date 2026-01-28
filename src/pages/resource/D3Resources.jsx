@@ -24,6 +24,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import InfoOutlineIcon from '@mui/icons-material/InfoOutline';
 import { Accordion, AccordionSummary, AccordionDetails, Chip } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ResourceSummary from './ResourceSummary';
 
 const excludedHueRange = [30, 360]; // Exclude hues from orange to red
 const isColorInExcludedRange = (hexColor) => {
@@ -80,14 +81,21 @@ const legendItems = [
     {
         label: "CI/CD Resource",
         circleStyle: {
-            backgroundColor: "#e25762",
+            backgroundColor: "#ee4266",
             border: "2px solid #fff",
+        },
+    },
+    {
+        label: "Pool Queue (Project-level)",
+        circleStyle: {
+            backgroundColor: "#534D41",
+            border: "1px solid #fff",
         },
     },
     {
         label: "Pipeline Definition",
         circleStyle: {
-            backgroundColor: "#5669b3",
+            backgroundColor: "#3C4EC3",
             border: "1px solid #fff",
         },
     },
@@ -107,8 +115,10 @@ const legendItems = [
     },
 ];
 
-const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipelines, logic_containers, projects }) => {
+const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipelines, logic_containers, projects, repositories, endpoints, secureFiles, pools, variableGroups, resourceTypeSelected, setResourceTypeSelected, getProtectedResourcesByOrgTypeAndIdsSummary, selectedPlatformSource }) => {
     const svgRef = useRef();
+    const containerRef = useRef(); // Reference to measure container dimensions
+    const zoomTransformRef = useRef(null); // Store zoom transform state
     const [selectedNode, setSelectedNode] = useState(null);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [highlightedNode, setHighlightedNode] = useState(null);
@@ -116,6 +126,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
     const [selectedTab, setSelectedTab] = React.useState("General Information");
     const [showAllQueues, setShowAllQueues] = useState(false);
     const [loading, setLoading] = useState(true); // Add loading state
+    const [dimensions, setDimensions] = useState({ width: 1500, height: 1500 });
 
     const handleToggleQueues = () => {
         setShowAllQueues(!showAllQueues);
@@ -248,6 +259,18 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
 
         setLoading(false);
 
+        // Save current zoom transform before clearing
+        const currentSvg = d3.select(svgRef.current);
+        const currentG = currentSvg.select('g');
+
+        // Only try to save zoom if the g element exists
+        if (!currentG.empty() && currentG.node()) {
+            const gNode = currentG.node();
+            if (gNode.__zoom) {
+                zoomTransformRef.current = gNode.__zoom;
+            }
+        }
+
         // Clear previous SVG if it exists
         d3.select(svgRef.current).selectAll("*").remove();
 
@@ -256,10 +279,13 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             links: []
         };
 
-        // Create Logic Container Nodes = Quite static, no issues
-        Object.keys(logic_containers).forEach((key, index) => {
-            const container = logic_containers[key];
-            // console.log("Creating logic container node:", container);
+        // Create Logic Container Nodes - Only show containers for current platform source
+        const filteredContainers = logic_containers.filter(container => {
+            if (!selectedPlatformSource?.id) return false;
+            return container.platform_source_ids && container.platform_source_ids.includes(selectedPlatformSource.id);
+        });
+        
+        filteredContainers.forEach((container, index) => {
             data.nodes.push({
                 id: `${container.id}`,
                 name: container.name.charAt(0).toUpperCase() + container.name.slice(1),
@@ -292,8 +318,21 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
 
             // get all the containers associated with this resource and if they exist in the nodes, connect them
             function getLogicContainersForResource(resourceId, logicContainers) {
-                return logicContainers
-                    .filter(container => Array.isArray(container.resources) && container.resources.includes(resourceId))
+                return logicContainers.filter(container => {
+                    // New format: resources scoped per platform source
+                    if (container.resources && typeof container.resources === 'object' && !Array.isArray(container.resources)) {
+                        const platformSourceId = selectedPlatformSource?.id;
+                        if (platformSourceId && container.resources[platformSourceId]) {
+                            return container.resources[platformSourceId].map(String).includes(String(resourceId));
+                        }
+                        return false;
+                    }
+                    // Old format: simple array (backwards compatibility)
+                    if (Array.isArray(container.resources)) {
+                        return container.resources.map(String).includes(String(resourceId));
+                    }
+                    return false;
+                });
             }
 
             if (selectedType === "environment") {
@@ -321,6 +360,38 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                 });
             }
 
+            // Create queue nodes for pools (project-level representation)
+            if (selectedType === "pool_merged" && resourceNode.queues && Array.isArray(resourceNode.queues)) {
+                resourceNode.queues.forEach(queue => {
+                    const queueProject = projects?.find(p => p.id === queue.projectId);
+                    const queueNode = {
+                        id: `queue_${queue.id}`,
+                        name: queue.name || resourceNode.name,
+                        description: `Project-level pool queue in ${queueProject?.name || queue.projectId}`,
+                        projects: queueProject ? [queueProject] : [{ id: queue.projectId, name: queue.projectId }],
+                        type: "Pool Queue",
+                        group: "queue",
+                        checks: queue.checks ? groupChecksByType(queue.checks) : {},
+                        pipelinepermissions: queue.pipelinepermissions || [],
+                        radius: 6,
+                        label: queueProject?.name ? `${queueProject.name} Queue` : "Pool Queue",
+                        parentPoolId: resourceNode.id,
+                        parentPoolName: resourceNode.name,
+                        isHosted: resourceNode.isHosted || false,
+                        url: queue.url || resourceNode.url,
+                    };
+
+                    data.nodes.push(queueNode);
+
+                    // Link queue to pool
+                    data.links.push({
+                        source: resourceNode.id,
+                        target: `queue_${queue.id}`,
+                        value: 1
+                    });
+                });
+            }
+
             const logicContainersForResource = getLogicContainersForResource(protected_resource.id, logic_containers);
 
             if (logicContainersForResource.length > 0) {
@@ -333,9 +404,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                         });
                     }
                 });
-            } else {
-                // console.log("No logic container found for resource", resourceNode);
-            }
+            } 
 
 
         });
@@ -377,12 +446,30 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
 
                 for (let resourceid_permission of pipeline_value.resourcepermissions[resource_type]) {
 
-                    if (data.nodes.some(node => node.id === resource_type + "_" + resourceid_permission)) {
-                        data.links.push({
-                            source: pipelineNode.id,
-                            target: `${resource_type + "_" + resourceid_permission}`,
-                            value: 1
+                    // For pools, connect to queue nodes instead of pool nodes directly
+                    if (resource_type === "pool_merged") {
+                        const queueNodes = data.nodes.filter(node =>
+                            node.group === "queue" &&
+                            node.parentPoolId === resource_type + "_" + resourceid_permission
+                        );
+                        queueNodes.forEach(queueNode => {
+                            if (!data.links.some(link => link.source === pipelineNode.id && link.target === queueNode.id)) {
+                                data.links.push({
+                                    source: pipelineNode.id,
+                                    target: queueNode.id,
+                                    value: 1
+                                });
+                            }
                         });
+                    } else {
+                        // For non-pool resources, connect directly
+                        if (data.nodes.some(node => node.id === resource_type + "_" + resourceid_permission)) {
+                            data.links.push({
+                                source: pipelineNode.id,
+                                target: `${resource_type + "_" + resourceid_permission}`,
+                                value: 1
+                            });
+                        }
                     }
                 }
 
@@ -488,8 +575,13 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
 
         // Other RESOURCES, PIPELINE DEFINITIONS and BUILDS are project specific 
 
-        const width = 1500;
-        const height = 1500;
+        // Get dynamic dimensions from container
+        const containerElement = containerRef.current;
+        const width = containerElement ? containerElement.clientWidth : 1500;
+        const height = containerElement ? containerElement.clientHeight : 1500;
+
+        // Update dimensions state
+        setDimensions({ width, height });
 
         // Create SVG container
         const svg = d3.select(svgRef.current)
@@ -497,13 +589,19 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             .attr("width", width)
             .attr("height", height)
             .attr("viewBox", [-width / 2, -height / 2, width, height])
-            .style("max-width", "100%")
-            .style("height", "auto");
+            .style("width", "100%")
+            .style("height", "100%");
 
 
 
-        svg.call(d3.zoom().on("zoom", zoomed));
+        const zoom = d3.zoom().on("zoom", zoomed);
+        svg.call(zoom);
         const g = svg.append("g");
+
+        // Restore previous zoom transform if it exists
+        if (zoomTransformRef.current) {
+            svg.call(zoom.transform, zoomTransformRef.current);
+        }
 
         const links = data.links.map(d => ({ ...d }));
         const nodes = data.nodes.map(d => ({ ...d }));
@@ -542,6 +640,8 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                         return 50;
                     case "protected_resource":
                         return 0;
+                    case "queue":
+                        return 50;
                     case "protected_resource_project":
                         return 75;
                     case "pipeline":
@@ -636,7 +736,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                 // shiftGraphLeft(-width / 3)
             });
 
-        const truncateLabel = (text, maxLength = 7) =>
+        const truncateLabel = (text, maxLength = 10) =>
             text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
 
         const labels = g.append("g")
@@ -682,6 +782,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
 
         function zoomed(event) {
             g.attr("transform", event.transform);  // Apply the zoom transformation to the group
+            zoomTransformRef.current = event.transform; // Save the current transform
         }
 
         function dragstarted(event) {
@@ -752,6 +853,26 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             });
     }, [highlightedNode]);
 
+    // Handle container resize
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        const resizeObserver = new ResizeObserver(entries => {
+            for (let entry of entries) {
+                const { width, height } = entry.contentRect;
+                if (width > 0 && height > 0) {
+                    setDimensions({ width, height });
+                }
+            }
+        });
+
+        resizeObserver.observe(containerRef.current);
+
+        return () => {
+            resizeObserver.disconnect();
+        };
+    }, []);
+
     const handleClose = () => {
         setDialogOpen(false);
         setHighlightedNode(null);
@@ -804,9 +925,29 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
     // }
 
     function getLogicContainersForResource(resourceId, logicContainers) {
-        resourceId = resourceId.split('_')[1];
-        const filtered = logicContainers
-            .filter(container => Array.isArray(container.resources) && container.resources.includes(resourceId))
+        if (resourceTypeSelected === "pool_merged") {
+            resourceId = parseInt(resourceId.replace('pool_merged_', ''));
+        } else {
+            resourceId = resourceId.split('_')[1];
+        }
+        
+        // Get current platform source ID - you may need to pass this as a prop
+        const platformSourceId = selectedPlatformSource?.id;
+        
+        const filtered = logicContainers.filter(container => {
+            // New format: resources scoped per platform source
+            if (container.resources && typeof container.resources === 'object' && !Array.isArray(container.resources)) {
+                if (platformSourceId && container.resources[platformSourceId]) {
+                    return container.resources[platformSourceId].map(String).includes(String(resourceId));
+                }
+                return false;
+            }
+            // Old format: simple array (backwards compatibility)
+            if (Array.isArray(container.resources)) {
+                return container.resources.map(String).includes(String(resourceId));
+            }
+            return false;
+        });
 
         return filtered;
     }
@@ -814,18 +955,194 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
     const tabContentMapping = selectedNode ? {
         "General Information": (
             <Box>
+                <Box sx={{ p: 2 }}>
+                    <Typography variant="h6" sx={{ mb: 2 }}>
+                        Basic Information
+                    </Typography>
+                    {selectedNode?.group === "protected_resource" && (
+                        <ListItem sx={{ display: 'flex', justifyContent: "right" }}>
+                            <Box
+                                sx={{
+                                    display: 'flex',
+                                    flexDirection: 'row',
+                                    gap: '8px',
+                                    width: '100%',
+                                    mb: 1,
+                                }}
+                            >
+                                {getLogicContainersForResource(selectedNode.id, logic_containers).length === 0 ? (
+                                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', opacity: 0.7, width: '100%', fontSize: '0.9em' }}>
+                                        This resource is not associated with any logic container. <b>Tip:</b> Use the Resource Table to associate it with a logic container.
+                                    </Typography>
+                                ) : (
+                                    getLogicContainersForResource(selectedNode.id, logic_containers).map((logic_container) => (
+                                        <Box
+                                            key={logic_container.id}
+                                            sx={{
+                                                backgroundColor: logic_container.color,
+                                                color: 'white',
+                                                padding: '2px 8px',
+                                                borderRadius: '4px',
+                                                fontSize: '0.8em',
+                                                fontWeight: 'bold',
+                                            }}
+                                        >
+                                            {logic_container.name}
+                                        </Box>
+                                    ))
+                                )}
+                            </Box>
+
+                        </ListItem>
+
+                    )}
+                    <Typography variant="body1" sx={{ mb: 1 }}>
+                        <strong>Name:</strong> {selectedNode?.name}
+                    </Typography>
+                    <Typography variant="body1" sx={{ mb: 1 }}>
+                        <strong>Description:</strong> {selectedNode?.description}
+                    </Typography>
+                    <Typography variant="body1" sx={{ mb: 2 }}>
+                        <strong>Type:</strong> {selectedNode?.type}
+                    </Typography>
+                    {(selectedNode?.group === "queue" || (selectedNode?.group === "protected_resource" && selectedNode?.type !== "Pool")) && (
+                        <>
+                            <Typography variant="body1" sx={{ mb: 1 }}>
+                                <strong>Parent Pool:</strong> {selectedNode?.parentPoolName}
+                            </Typography>
+                            <Typography variant="body1" sx={{ mb: 1 }}>
+                                <strong>Pool Type:</strong> {selectedNode?.isHosted ? "Microsoft-hosted" : "Self-hosted"}
+                            </Typography>
+                            {selectedNode?.url && (
+                                <Typography variant="body1" sx={{ mb: 2 }}>
+                                    <strong>URL:</strong>{" "}
+                                    <Link href={selectedNode.url} target="_blank" rel="noopener">
+                                        {selectedNode.url}
+                                    </Link>
+                                </Typography>
+                            )}
+                            {selectedNode?.group === "protected_resource" && selectedNode?.type === "Pool" && (
+                                <Typography variant="body2" sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1, fontStyle: 'italic' }}>
+                                    <strong>Note:</strong> Approvals and checks for pools are applied at the project-level instance (queue) rather than at the organization-level pool.
+                                </Typography>
+                            )}
+                            {(selectedNode?.group === "protected_resource" || selectedNode?.group === "queue") && selectedNode?.checks && selectedNode?.type !== "Pool" && (
+                                <Typography variant="body1" sx={{ mb: 2 }}>
+                                    <strong>Protection Status:</strong>
+                                    {Object.keys(selectedNode.checks).length > 0 ? (
+                                        <Box sx={{ mt: 1, display: 'flex', alignItems: 'center' }}>
+                                            <CheckCircleIcon sx={{ color: 'success.main', mr: 1 }} />
+                                            <Typography component="span">
+                                                {Object.keys(selectedNode.checks).length} check type{Object.keys(selectedNode.checks).length !== 1 ? 's' : ''} configured
+                                            </Typography>
+                                        </Box>
+                                    ) : (
+                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                            <CancelIcon sx={{ color: 'error.main', mr: 1 }} />
+                                            <Typography component="span">
+                                                No checks configured
+                                            </Typography>
+                                        </Box>
+                                    )}
+                                </Typography>
+                            )}
+                            {selectedNode?.pipelinepermissions && selectedNode.pipelinepermissions.length > 0 && (
+                                <>
+                                    <Divider sx={{ my: 2 }} />
+                                    <Typography variant="h6" sx={{ mb: 1, color: '#3C4EC3' }}>
+                                        Pipeline Permissions ({selectedNode.pipelinepermissions.length})
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                        Pipelines authorized to use this queue:
+                                    </Typography>
+                                    <Box sx={{ maxHeight: '200px', overflow: 'auto' }}>
+                                        {selectedNode.pipelinepermissions.map((pipelineId, idx) => {
+                                            const pipeline = pipelines?.find(p => p.id === pipelineId || p.k_key === pipelineId);
+                                            return (
+                                                <Typography key={idx} variant="body2" sx={{ ml: 2, mb: 0.5 }}>
+                                                    • {pipeline ? pipeline.name : `Pipeline ID: ${pipelineId}`}
+                                                </Typography>
+                                            );
+                                        })}
+                                    </Box>
+                                </>
+                            )}
+                        </>
+                    )}
+
+                </Box>
                 <List dense>
-                    <ListItem>
-                        <ListItem>
-                            <ListItemText primary="Name" secondary={selectedNode?.name} />
-                        </ListItem>
-                        <ListItem>
-                            <ListItemText primary="Description" secondary={selectedNode?.description} />
-                        </ListItem>
-                        <ListItem>
-                            <ListItemText primary="Type" secondary={selectedNode?.type} />
-                        </ListItem>
-                    </ListItem>
+                    {selectedNode?.group === "pipeline" && (
+                        <Box>
+                            {selectedNode?.group === "pipeline" && selectedNode?.resourcepermissions ? (
+                                <Box sx={{ p: 2 }}>
+                                    <Typography variant="h6" sx={{ mt: 2, mb: 1, ml: 2, color: '#ee4266' }}>
+                                        Pipeline Resource Permissions
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 2, ml: 2 }}>
+                                        {Object.entries(selectedNode.resourcepermissions).map(([resourceType, resourceIds]) => {
+                                            if (resourceType === 'queue') return null;
+
+                                            const formatKey = (key) => {
+                                                switch (key.toLowerCase()) {
+                                                    case 'repository':
+                                                        return 'Repositories';
+                                                    case 'endpoint':
+                                                        return 'Service Connections';
+                                                    case 'pool_merged':
+                                                        return 'Pools';
+                                                    case 'variablegroup':
+                                                        return 'Variable Groups';
+                                                    case 'securefile':
+                                                        return 'Secure Files';
+                                                    default:
+                                                        return key;
+                                                }
+                                            };
+
+                                            return (
+                                                <Box
+                                                    key={resourceType}
+                                                    sx={{
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        minWidth: '100px',
+                                                        width: '200px',
+                                                        maxHeight: '300px',
+                                                        overflow: 'auto',
+                                                        flex: '1 1 auto',
+                                                        p: 2,
+                                                        border: '1px solid #e0e0e0',
+                                                        borderRadius: 1,
+                                                        backgroundColor: '#fafafa'
+                                                    }}
+                                                >
+                                                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                                                        <strong>{formatKey(resourceType)}:</strong>
+                                                    </Typography>
+                                                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                                        <ResourceSummary
+                                                            selectedPlatformSourceId={selectedPlatformSource?.id}
+                                                            resourceType={resourceType}
+                                                            resourceIds={resourceIds}
+                                                            getProtectedResourcesByOrgTypeAndIdsSummary={getProtectedResourcesByOrgTypeAndIdsSummary}
+                                                            setResourceTypeSelected={setResourceTypeSelected}
+                                                            resourceTypeSelected={resourceTypeSelected}
+                                                            formatKey={formatKey}
+                                                        />
+                                                    </Box>
+                                                </Box>
+                                            );
+                                        })}
+                                    </Box>
+                                </Box>
+                            ) : (
+                                <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
+                                    No resource permissions available for this pipeline.
+                                </Typography>
+                            )}
+                        </Box>)
+                    }
 
                     {selectedNode?.group === "logic_container" && (
                         <ListItem>
@@ -851,164 +1168,76 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                         </ListItem>
                     )}
                 </List>
-                {selectedNode?.group === "protected_resource" && (
-                    <ListItem sx={{ display: 'flex', justifyContent: "right" }}>
-                        <Box
-                            sx={{
-                                display: 'flex',
-                                flexDirection: 'row',
-                                gap: '8px',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                width: '100%',
-                                textAlign: 'center',
-                            }}
-                        >
 
-                            {getLogicContainersForResource(selectedNode.id, logic_containers).length === 0 ? (
-                                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', opacity: 0.7, width: '100%', textAlign: 'center', fontSize: '0.9em' }}>
-                                    This resource is not associated with any logic container. <b>Tip:</b> Use the Resource Table to associate it with a logic container.
-                                </Typography>
-                            ) : (
-                                getLogicContainersForResource(selectedNode.id, logic_containers).map((logic_container) => (
+                <Box>
+
+                    {selectedNode?.checks && Object.keys(selectedNode.checks).length > 0 ? (
+                        <>
+                            <Divider sx={{ my: 2 }} />
+                            <Typography variant="h5" sx={{ mb: 2, ml: 2, color: '#0ead69' }}>
+                                Protection Checks
+                            </Typography>
+                            <Box sx={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 2, ml: 2, mr: 2 }}>
+                                {Object.entries(selectedNode.checks).map(([checkType, checks]) => (
                                     <Box
-                                        key={logic_container.id}
+                                        key={checkType}
                                         sx={{
-                                            backgroundColor: logic_container.color,
-                                            color: 'white',
-                                            padding: '2px 8px',
-                                            borderRadius: '4px',
-                                            fontSize: '0.8em',
-                                            fontWeight: 'bold',
-                                            textAlign: 'center',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            width: '250px',
+                                            height: '200px',
+                                            overflow: 'auto',
+                                            flex: '0 0 250px',
+                                            p: 2,
+                                            border: '1px solid #e0e0e0',
+                                            borderRadius: 1,
+                                            backgroundColor: '#fafafa'
                                         }}
                                     >
-                                        {logic_container.name}
-                                    </Box>
-                                ))
-                            )}
-                        </Box>
-                    </ListItem>
-                )}
-
-            </Box>
-        ),
-        "Checks and Approvals": (
-            <Box>
-
-                {selectedNode?.checks && (
-                    <Box>
-                        <Paper elevation={0} sx={{ padding: 2 }}>
-                            {(() => {
-                                const complianceMap = {
-                                    "Protected": {
-                                        icon: <CheckCircleIcon sx={{ color: 'success.main', mr: 1 }} />,
-                                        text: "Protected",
-                                        color: 'success.main'
-                                    },
-                                    "Partially Protected": {
-                                        icon: <WarningAmberIcon sx={{ color: 'warning.main', mr: 1 }} />,
-                                        text: "Partially Protected",
-                                        color: 'warning.main'
-                                    },
-                                    "Not Protected": {
-                                        icon: <CancelIcon sx={{ color: 'error.main', mr: 1 }} />,
-                                        text: "Not Protected",
-                                        color: 'error.main'
-                                    }
-                                };
-                                const complianceResult = evaluate_logic_container_policy(getLogicContainersForResource(selectedNode.id, logic_containers), selectedNode.checks)?.result;
-                                const status = complianceMap[complianceResult] || {
-                                    icon: null,
-                                    text: "Unknown",
-                                    color: 'text.primary'
-                                };
-
-                                // Align icon and text vertically
-                                return (
-                                    <Box display="flex" alignItems="center" sx={{ flexWrap: 'wrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                            {status.icon}
-                                            <Typography variant="body1" color={status.color} sx={{ wordWrap: 'break-word', overflowWrap: 'break-word', ml: 1 }}>
-                                                {status.text}
-                                            </Typography>
+                                        <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold' }}>
+                                            {formatCheckTypeName(checkType)}
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            {checks.map((check, index) => (
+                                                <Box
+                                                    key={index}
+                                                    sx={{
+                                                        pb: 2,
+                                                        borderBottom: index < checks.length - 1 ? '1px solid #e0e0e0' : 'none'
+                                                    }}
+                                                >
+                                                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                                                        <Link href={isValidUrl(check.url) ? check.url : '#'} target="_blank" rel="noopener">
+                                                            {check.settings?.displayName || check.type?.name || "Unnamed Check"}
+                                                        </Link>
+                                                    </Typography>
+                                                    <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                                                        <strong>Created:</strong> {check.createdBy?.displayName}
+                                                    </Typography>
+                                                    <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                                                        <strong>Timeout:</strong> {check.timeout} min
+                                                    </Typography>
+                                                    {check.settings?.approvers && (
+                                                        <Typography variant="caption" sx={{ display: 'block' }}>
+                                                            <strong>Approvers:</strong> {check.settings.approvers.map(a => a.displayName).join(', ')}
+                                                        </Typography>
+                                                    )}
+                                                </Box>
+                                            ))}
                                         </Box>
                                     </Box>
-                                );
-                            }
-                            )()}
-                        </Paper>
-                    </Box>
-                )}
-
-                {selectedNode?.checks && Object.keys(selectedNode.checks).length > 0 ? (
-                    Object.entries(selectedNode.checks).map(([checkType, checks]) => (
-                        <Box key={checkType} mb={2}>
-                            <Divider sx={{ my: 2 }} />
-                            <Typography variant="h6" sx={{ color: 'text.secondary', letterSpacing: 1, fontWeight: 500, wordWrap: 'break-word', overflowWrap: 'break-word' }} gutterBottom>
-                                {formatCheckTypeName(checkType)}
-                            </Typography>
-                            <Divider sx={{ my: 2 }} />
-                            <Box display="flex" flexWrap="wrap" gap={2}>
-                                {checks.slice(0, 3).map((check, index) => (
-                                    <Paper
-                                        key={index}
-                                        elevation={1}
-                                        sx={{
-                                            padding: 2,
-                                            width: '100%',
-                                            maxWidth: '45%',
-                                            minWidth: '200px',
-                                            flex: '1 1 auto',
-                                            wordWrap: 'break-word',
-                                            overflowWrap: 'break-word',
-                                        }}
-                                    >
-                                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'text.primary' }} gutterBottom>
-                                            <Link href={isValidUrl(check.url) ? check.url : '#'} target="_blank" rel="noopener">
-                                                {check.settings?.displayName || check.type?.name || "Unnamed Check"}
-                                            </Link>
-                                        </Typography>
-
-                                        <Typography variant="body2">
-                                            <strong>Created By:</strong> {check.createdBy?.displayName} on {new Date(check.createdOn).toLocaleString()}
-                                        </Typography>
-                                        <Typography variant="body2">
-                                            <strong>Modified By:</strong> {check.modifiedBy?.displayName} on {new Date(check.modifiedOn).toLocaleString()}
-                                        </Typography>
-                                        <Typography variant="body2">
-                                            <strong>Timeout:</strong> {check.timeout} minutes
-                                        </Typography>
-                                        {check.settings?.inputs && (
-                                            <Typography variant="body2">
-                                                <strong>Inputs:</strong>
-                                                <ul>
-                                                    {Object.entries(check.settings.inputs).map(([key, value]) => (
-                                                        <li key={key}><strong>{formatCheckTypeName(key)}:</strong> {value}</li>
-                                                    ))}
-                                                </ul>
-                                            </Typography>
-                                        )}
-                                        {check.settings?.approvers && (
-                                            <Typography variant="body2">
-                                                <strong>Approvers:</strong>
-                                                <ul>
-                                                    {check.settings.approvers.map((approver, i) => (
-                                                        <li key={i}>{approver.displayName}</li>
-                                                    ))}
-                                                </ul>
-                                            </Typography>
-                                        )}
-                                    </Paper>
                                 ))}
                             </Box>
-                        </Box>
-                    ))
-                ) : (
-                    <Typography variant="body1" color={status.color} sx={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}>
-                        Add an approval and check condition that applies everytime this resource is accessed by a pipeline.
-                    </Typography>
-                )}
+                        </>
+                    ) : (
+                        selectedNode?.group === "protected_resource" && selectedNode?.type !== "Pool" && (
+                            <Typography variant="body2" sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1, fontStyle: 'italic' }}>
+                                Add an approval and check condition that applies everytime this resource is accessed by a pipeline.
+                            </Typography>
+                        )
+                    )}
+                </Box>
+
             </Box>
         ),
         "Pipeline Executions": <div>Pipeline Executions Content</div>,
@@ -1129,10 +1358,13 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
 
         switch (selectedNode.group) {
             case "protected_resource":
-                tabs.push("General Information", "Checks and Approvals");
+                tabs.push("General Information");
                 break;
             case "protected_resource_project":
-                tabs.push("General Information", "Checks and Approvals");
+                tabs.push("General Information");
+                break;
+            case "queue":
+                tabs.push("General Information");
                 break;
             case "pipeline":
                 tabs.push("General Information");
@@ -1197,7 +1429,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                     <>
                         <Typography variant="caption" component="div">
                             {selectedNode.type.charAt(0).toUpperCase() + selectedNode.type.slice(1).toLowerCase()} @{" "}
-                            {Array.isArray(selectedNode?.projects)
+                            {Array.isArray(selectedNode?.projects) && selectedNode.projects.length > 0
                                 ? selectedNode.projects.map(project =>
                                     typeof project === 'object' && project.url
                                         ? (
@@ -1213,10 +1445,12 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                                         )
                                         : (typeof project === 'object' ? project.name : project)
                                 ).reduce((prev, curr) => prev === null ? [curr] : [...prev, ', ', curr], null)
-                                : selectedNode?.projects
+                                : (Array.isArray(selectedNode?.projects) && selectedNode.projects.length === 0)
+                                    ? "Resource is not shared with any projects"
+                                    : selectedNode?.projects || "Resource is not shared with any projects"
                             }
                         </Typography>
-                        <Typography variant="h5" component="div">
+                        <Typography variant="h5" component="div" sx={{ mt: 2 }}>
                             {selectedNode.name}
                         </Typography>
                     </>
@@ -1390,12 +1624,41 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
     };
 
     return (
-        <Box sx={{ display: 'flex', height: '100%' }}>
+        <Box sx={{ display: 'flex', height: '100%', width: '100%' }}>
             {loading ? (
                 <CircularProgress size={80} style={{ color: 'purple' }} />
             ) :
-                <Box sx={{ display: 'flex', height: '100%', border: '1px solid #ccc', borderRadius: '8px', padding: '16px', flexDirection: 'column' }}>
-                    <svg ref={svgRef}></svg>
+                <Box sx={{ display: 'flex', height: '100%', width: '100%', border: '1px solid #ccc', borderRadius: '8px', padding: '16px', flexDirection: 'column' }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'row', gap: 0.5, alignItems: 'center', justifyContent: 'flex-end', mb: 1 }}>
+                        <Button
+                            size="small"
+                            onClick={() => setShowLegend((prev) => !prev)}
+                            sx={{ minWidth: 'auto', width: 'auto', padding: '2px 4px' }}
+                        >
+                            {showLegend ? <InfoIcon fontSize="small" /> : <InfoOutlineIcon fontSize="small" />}
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<DownloadIcon sx={{ fontSize: '14px' }} />}
+                            onClick={handleDownloadSVG}
+                            sx={{ minWidth: 'auto', width: 'auto', padding: '2px 6px', fontSize: '0.7rem' }}
+                        >
+                            SVG
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<ImageIcon sx={{ fontSize: '14px' }} />}
+                            onClick={handleDownloadPNG}
+                            sx={{ minWidth: 'auto', width: 'auto', padding: '2px 6px', fontSize: '0.7rem' }}
+                        >
+                            PNG
+                        </Button>
+                    </Box>
+                    <Box ref={containerRef} sx={{ flex: 1, minHeight: 0, width: '100%', position: 'relative' }}>
+                        <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block' }}></svg>
+                    </Box>
                     {renderDialogContent()}
                     {showLegend && (
                         <Box sx={{ width: '100%', mt: 2, display: 'flex', flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 2 }}>
@@ -1426,33 +1689,6 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                         </Box>
                     )}
 
-                    <Box sx={{ display: 'flex', flexDirection: 'row', gap: 1, alignItems: 'center', justifyContent: 'flex-end', mb: 1 }}>
-                        <Button
-                            size="small"
-                            onClick={() => setShowLegend((prev) => !prev)}
-                            sx={{ minWidth: 'auto', width: 'auto' }}
-                        >
-                            {showLegend ? <InfoIcon fontSize="small" /> : <InfoOutlineIcon fontSize="small" />}
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<DownloadIcon />}
-                            onClick={handleDownloadSVG}
-                            sx={{ minWidth: 'auto', width: 'auto' }}
-                        >
-                            SVG
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<ImageIcon />}
-                            onClick={handleDownloadPNG}
-                            sx={{ minWidth: 'auto', width: 'auto' }}
-                        >
-                            PNG
-                        </Button>
-                    </Box>
                 </Box>
             }
         </Box>

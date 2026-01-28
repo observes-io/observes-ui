@@ -23,7 +23,7 @@ import {
     Chip,
 } from '@mui/material';
 import dayjs from 'dayjs';
-import useStore from '../../../state/stores/store';
+import useStore from '../../../../state/stores/store';
 
 const VariableGroupsTab = ({ projectId }) => {
     const [variableGroups, setVariableGroups] = useState([]);
@@ -36,15 +36,15 @@ const VariableGroupsTab = ({ projectId }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    const { selectedScan, fetchProtectedResourcesByTypeOrgProject } = useStore();
+    const { selectedPlatformSource, fetchProtectedResourcesByTypeOrgProject } = useStore();
 
     useEffect(() => {
         async function fetchGroups() {
             setLoading(true);
             setError(null);
             try {
-                if (selectedScan && selectedScan.id && projectId) {
-                    const result = await fetchProtectedResourcesByTypeOrgProject(selectedScan.id, 'variablegroup', projectId);
+                if (selectedPlatformSource && selectedPlatformSource.id && projectId) {
+                    const result = await fetchProtectedResourcesByTypeOrgProject(selectedPlatformSource.id, 'variablegroup', projectId);
                     let allGroups = [];
                     if (result && Array.isArray(result.resources)) {
                         allGroups = result.resources;
@@ -65,7 +65,7 @@ const VariableGroupsTab = ({ projectId }) => {
             setLoading(false);
         }
         fetchGroups();
-    }, [selectedScan, projectId, fetchProtectedResourcesByTypeOrgProject]);
+    }, [selectedPlatformSource, projectId, fetchProtectedResourcesByTypeOrgProject]);
 
     // Filtered groups and local pagination
     const filteredGroups = variableGroupsSearch

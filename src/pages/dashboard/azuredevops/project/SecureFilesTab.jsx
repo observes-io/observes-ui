@@ -27,9 +27,9 @@ import {
     Tooltip as MuiTooltip
 } from '@mui/material';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import resourceTypeStyle from '../../theme/resourceTypeStyle';
+import resourceTypeStyle from '../../../theme/resourceTypeStyle';
 import dayjs from 'dayjs';
-import useStore from '../../../state/stores/store';
+import useStore from '../../../../state/stores/store';
 
 
 const SecureFilesTab = ({ projectId }) => {
@@ -41,15 +41,15 @@ const SecureFilesTab = ({ projectId }) => {
     const [secureFilesPerPage, setSecureFilesPerPage] = useState(10);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
-    const { selectedScan, fetchProtectedResourcesByTypeOrgProject } = useStore();
+    const { selectedPlatformSource, fetchProtectedResourcesByTypeOrgProject } = useStore();
 
     useEffect(() => {
         async function fetchSecureFiles() {
             setLoading(true);
             setError(null);
             try {
-                if (selectedScan && selectedScan.id && projectId) {
-                    const result = await fetchProtectedResourcesByTypeOrgProject(selectedScan.id, 'securefile', projectId);
+                if (selectedPlatformSource && selectedPlatformSource.id && projectId) {
+                    const result = await fetchProtectedResourcesByTypeOrgProject(selectedPlatformSource.id, 'securefile', projectId);
                     let allFiles = [];
                     if (result && Array.isArray(result.resources)) {
                         allFiles = result.resources;
@@ -70,7 +70,7 @@ const SecureFilesTab = ({ projectId }) => {
             setLoading(false);
         }
         fetchSecureFiles();
-    }, [selectedScan, projectId, fetchProtectedResourcesByTypeOrgProject]);
+    }, [selectedPlatformSource, projectId, fetchProtectedResourcesByTypeOrgProject]);
 
     // Filtered secure files and local pagination
     const filteredFiles = secureFilesSearch

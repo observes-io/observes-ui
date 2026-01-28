@@ -8,6 +8,7 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 */
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import useStore from '../../state/stores/store';
 import observesLogo from '../theme/Observes-logoonly-giant.png';
 // STYLE
@@ -15,18 +16,16 @@ import { styled } from '@mui/material/styles';
 import Avatar from '@mui/material/Avatar';
 import Divider from '@mui/material/Divider';
 import MuiDrawer, { drawerClasses } from '@mui/material/Drawer';
-import { Box, IconButton, Typography, List, ListItem, ListItemButton, ListItemIcon, ListItemText, ListSubheader, MenuItem, Select, Tooltip } from '@mui/material';
-import HomeRoundedIcon from '@mui/icons-material/HomeRounded';
-import ScatterPlotIcon from '@mui/icons-material/ScatterPlot';
-import SettingsIcon from '@mui/icons-material/Settings';
-import BadgeIcon from '@mui/icons-material/Badge';
-import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
-import InfoRoundedIcon from '@mui/icons-material/InfoRounded';
-import HelpRoundedIcon from '@mui/icons-material/HelpRounded';
-import GavelIcon from '@mui/icons-material/Gavel';
+import { Box, IconButton, Snackbar, Alert, Typography, List, ListItem, ListItemButton, ListItemIcon, ListItemText, ListSubheader, MenuItem, Select, Tooltip, Menu, Chip } from '@mui/material';
 import BusinessIcon from '@mui/icons-material/Business';
 import MuiListItemAvatar from '@mui/material/ListItemAvatar';
 import { selectClasses } from '@mui/material/Select';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import LogoutIcon from '@mui/icons-material/Logout';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
+import { useAuth } from '../../contexts/AuthContext';
+import ContactMailIcon from '@mui/icons-material/ContactMail';
+import LoginIcon from '@mui/icons-material/Login';
 
 const ListItemAvatar = styled(MuiListItemAvatar)({
   minWidth: 0,
@@ -46,24 +45,60 @@ const Drawer = styled(MuiDrawer)({
   },
 });
 
-const mainListItems = [
-  { id: 'overview', text: 'Overview', icon: <HomeRoundedIcon /> },
-  { id: 'resource', text: 'Tracker', icon: <ScatterPlotIcon /> },
-  // { id: 'policy', text: 'Compliance', icon: <GavelIcon /> },
-  { id: 'platform', text: 'Platform Manager', icon: <BadgeIcon /> },
-  { id: 'settings', text: 'Settings', icon: <SettingsIcon /> },
-];
 
-export default function Sidebar({ onMenuItemClick }) {
-  const { current_page, scans, selectedScan, selectedProject, setCurrentPage, fetchScans, setSelectedScan, setSelectedProject } = useStore();
+export default function Sidebar({ onMenuItemClick, mainListItems }) {
+  const { current_page, platformSources, selectedPlatformSource, selectedProject, setCurrentPage, fetchPlatformSources, setSelectedPlatformSource, setSelectedProject } = useStore();
+  const { user, logout, isGuestMode, exitGuestMode } = useAuth();
+  const navigate = useNavigate();
 
 
 
   useEffect(() => {
-    fetchScans();
-  }, [fetchScans]);
+    fetchPlatformSources();
+  }, [fetchPlatformSources]);
 
   const [open, setOpen] = useState(true);
+  const [anchorElUser, setAnchorElUser] = useState(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+
+  const handleOpenUserMenu = (event) => {
+    setAnchorElUser(event.currentTarget);
+  };
+
+  const handleCloseUserMenu = () => {
+    setAnchorElUser(null);
+  };
+
+  const handleAccountSettings = () => {
+    handleCloseUserMenu();
+    handleMenuItemClick('settings', 'Settings');
+    navigate('/settings');
+  };
+
+  const handleLogout = () => {
+    handleCloseUserMenu();
+    logout();
+    navigate('/login', { replace: true });
+  };
+
+  const handleContactUs = async () => {
+    handleCloseUserMenu();
+    try {
+      await navigator.clipboard.writeText('contact@observes.io');
+      setSnackbarOpen(true);
+    } catch (err) {
+      console.error('Failed to copy email:', err);
+    }
+  };
+
+  const handleBackToLogin = () => {
+    handleCloseUserMenu();
+    navigate('/login');
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbarOpen(false);
+  };
 
   const toggleDrawer = () => {
     setOpen(!open);
@@ -87,25 +122,25 @@ export default function Sidebar({ onMenuItemClick }) {
       document.body.removeChild(link);
     }
 
-    let selectedScanLocal = null;
+    let selectedPlatformSourceLocal = null;
     let selectedProj = null;
-    scans.forEach(scan => {
+    platformSources.forEach(scan => {
       if (scan.id === selectedValue) {
-        selectedScanLocal = scan;
+        selectedPlatformSourceLocal = scan;
       } else {
         const proj = scan.projectRefs?.find(proj => proj.id === selectedValue);
         if (proj) {
-          selectedScanLocal = scan;
+          selectedPlatformSourceLocal = scan;
           selectedProj = proj;
         }
       }
     });
 
-    if (selectedScanLocal && !selectedProj) {
-      setSelectedScan(selectedScanLocal);
+    if (selectedPlatformSourceLocal && !selectedProj) {
+      setSelectedPlatformSource(selectedPlatformSourceLocal);
       setSelectedProject(null);
     } else if (selectedProj) {
-      setSelectedScan(selectedScanLocal);
+      setSelectedPlatformSource(selectedPlatformSourceLocal);
       setSelectedProject(selectedProj);
     }
   };
@@ -151,14 +186,14 @@ export default function Sidebar({ onMenuItemClick }) {
           {open ? (
             <Select
               id="project-select"
-              value={selectedProject?.id || selectedScan?.id || ''}
+              value={selectedProject?.id || selectedPlatformSource?.id || ''}
               onChange={handleChange}
               displayEmpty
               renderValue={(value) => {
                 if (!value) {
-                  return <em>Onboard</em>;
+                  return <em>Onboard Platforms</em>;
                 }
-                const project = scans
+                const project = platformSources
                   .flatMap(scan => scan.projectRefs || [])
                   .find(proj => proj.id === value);
                 if (project) {
@@ -191,7 +226,7 @@ export default function Sidebar({ onMenuItemClick }) {
               }}
             >
               <ListSubheader sx={{ mt: 2, mb: 2, fontWeight: "bold", background: "white" }}>Azure DevOps</ListSubheader>
-              {scans.flatMap((scan) => [
+              {platformSources.flatMap((scan) => [
                 <ListSubheader sx={{ background: "white" }} key={`${scan.id}-header`}>{scan.name}</ListSubheader>,
                 <MenuItem key={scan.id} value={scan.id} sx={{ maxWidth: '200px', height: '48px' }}>
                   <ListItemAvatar>
@@ -266,63 +301,147 @@ export default function Sidebar({ onMenuItemClick }) {
         <Divider />
         <List>
           {mainListItems.filter((item) => {
-            if (scans.length === 0) {
+            if (platformSources.length === 0) {
               return !['policy', 'platform', 'resource'].includes(item.id);
             }
             return true;
           }).map((item, index) => (
             <ListItem key={index} disablePadding sx={{ transition: 'padding-left 0.3s ease' }}>
-              {open ? (
-                <ListItemButton
-                  onClick={() => handleMenuItemClick(item.id, item.text)}
-                  selected={current_page === item.text}
-                  sx={{
-                    display: 'flex',
-                    justifyContent: open ? 'flex-start' : 'center',
-                    alignItems: 'center',
-                    minWidth: 0,
-                    paddingLeft: open ? '16px' : '12px',
-                    transition: 'padding-left 0.3s ease',
-                    height: '48px'
-                  }}
-                >
-                  <ListItemIcon sx={{ fontSize: open ? '24px' : '32px' }}>{item.icon}</ListItemIcon>
-                  {open && <ListItemText primary={item.text} />}
-                </ListItemButton>
-              ) : (
-                <Tooltip title={item.text} placement="right">
-                  <ListItemButton
-                    onClick={() => handleMenuItemClick(item.id, item.text)}
-                    selected={current_page === item.text}
-                    sx={{
-                      display: 'flex',
-                      justifyContent: open ? 'flex-start' : 'center',
-                      alignItems: 'center',
-                      minWidth: 0,
-                      paddingLeft: open ? '16px' : '12px',
-                      transition: 'padding-left 0.3s ease',
-                      height: '48px'
-                    }}
-                  >
-                    <ListItemIcon sx={{ fontSize: open ? '24px' : '32px' }}>{item.icon}</ListItemIcon>
-                    {open && <ListItemText primary={item.text} />}
-                  </ListItemButton>
-                </Tooltip>
-              )}
+              <ListItemButton
+                onClick={() => handleMenuItemClick(item.id, item.text)}
+                selected={current_page === item.text}
+                sx={{
+                  display: 'flex',
+                  justifyContent: open ? 'flex-start' : 'center',
+                  alignItems: 'center',
+                  minWidth: 0,
+                  paddingLeft: open ? '16px' : '12px',
+                  transition: 'padding-left 0.3s ease',
+                  height: '48px',
+                }}
+              >
+                <ListItemIcon sx={{ fontSize: open ? '24px' : '32px' }}>
+                  {item.icon}
+                </ListItemIcon>
+                {open && <ListItemText primary={item.text} />}
+              </ListItemButton>
             </ListItem>
           ))}
         </List>
+        
+        {/* User Account Section at Bottom */}
         <Box
           sx={{
-            display: 'flex',
-            mt: 'calc(var(--template-frame-height, 0px) + 4px)',
-            p: 1.5,
-            flexDirection: 'column',
-            alignItems: 'center',
+            mt: 'auto',
+            borderTop: '1px solid',
+            borderColor: 'divider',
           }}
         >
+          {open ? (
+            <Box sx={{ p: 1.5 }}>
+              <ListItemButton
+                onClick={handleOpenUserMenu}
+                sx={{
+                  borderRadius: 1,
+                  '&:hover': {
+                    bgcolor: 'action.hover',
+                  },
+                }}
+              >
+                <ListItemIcon>
+                  <AccountCircleIcon />
+                </ListItemIcon>
+                <Box sx={{ overflow: 'hidden', ml: 1 }}>
+                  <Typography variant="body2" fontWeight="600" noWrap>
+                    {user?.isGuest ? 'Guest' : (user?.email?.split('@')[0] || user?.name || 'User')}
+                  </Typography>
+                  {user?.isGuest && (
+                    <Typography variant="caption" color="primary" noWrap>
+                      Demo Mode
+                    </Typography>
+                  )}
+                </Box>
+              </ListItemButton>
+            </Box>
+          ) : (
+            <Box sx={{ p: 1, textAlign: 'center' }}>
+              <Tooltip title="Account" placement="right">
+                <IconButton onClick={handleOpenUserMenu} size="small">
+                  <AccountCircleIcon />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          )}
+          
+          <Menu
+            anchorEl={anchorElUser}
+            open={Boolean(anchorElUser)}
+            onClose={handleCloseUserMenu}
+            anchorOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+            transformOrigin={{
+              vertical: 'bottom',
+              horizontal: 'left',
+            }}
+          >
+            <Box sx={{ px: 2, py: 1, minWidth: 200 }}>
+              <Typography variant="body2" fontWeight="600">
+                {user?.email || user?.name || 'User'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {user?.isGuest ? 'Guest Mode' : (user?.tenantName || 'Tenant User')}
+              </Typography>
+            </Box>
+            <Divider />
+            {isGuestMode && (
+              <>
+                <MenuItem onClick={handleBackToLogin}>
+                  <ListItemIcon>
+                    <LoginIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Back to Login</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={handleContactUs}>
+                  <ListItemIcon>
+                    <ContactMailIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Contact Us (Copy Email)</ListItemText>
+                </MenuItem>
+                <Divider />
+              </>
+            )}
+            {!isGuestMode && (
+              <>
+                <MenuItem onClick={handleAccountSettings}>
+                  <ListItemIcon>
+                    <ManageAccountsIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Account Settings</ListItemText>
+                </MenuItem>
+                <Divider />
+                <MenuItem onClick={handleLogout}>
+                  <ListItemIcon>
+                    <LogoutIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Sign Out</ListItemText>
+                </MenuItem>
+              </>
+            )}
+          </Menu>
         </Box>
       </Drawer>
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={2000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity="success" sx={{ width: '100%' }}>
+          Email copied to clipboard!
+        </Alert>
+      </Snackbar>
     </div>
   );
 }

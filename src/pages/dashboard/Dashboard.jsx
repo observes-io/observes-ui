@@ -11,44 +11,44 @@ import React, { useEffect } from 'react';
 import { alpha } from '@mui/material/styles';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
-import MainGrid from '../components/MainGrid';
 import Typography from '@mui/material/Typography';
-import AzureDevOpsLogo from './assets/ado.png';
 import useStore from '../../state/stores/store';
+
+// LOGOS
+// import AzureDevOpsLogo from './assets/ado.png';
+// import GitHubLogo from './assets/github.png';
+// import JenkinsLogo from './assets/jenkins.png';
+// import AtlassianLogo from './assets/atlassian.png';
+
+
+// Platform Dashboard Components
+import MainGrid from './MainGrid';
+
 
 export default function Dashboard() {
   // GLOBAL STATE
-  const { scans, selectedScan, setSelectedScan, fetchScans, setCurrentPage } = useStore();
-
-  // LOCAL STATE
-  const [platformType, setPlatformType] = React.useState(selectedScan?.type || 'AzureDevOps');
+  const { platformSources, selectedPlatformSource, setSelectedPlatformSource, fetchPlatformSources, setCurrentPage } = useStore();
 
   useEffect(() => {
-    setCurrentPage("Overview");
+    setCurrentPage("Dashboard");
   }, [setCurrentPage]);
 
   useEffect(() => {
     // Selected organisation is set to the first organisation in the list if no organisation is selected
-    fetchScans();
-    if (!selectedScan && scans.length > 0) {
-      setSelectedScan(scans[0]);
+    fetchPlatformSources();
+    if (!selectedPlatformSource && platformSources.length > 0) {
+      setSelectedPlatformSource(platformSources[0]);
     }
-  }, [fetchScans]);
+  }, [fetchPlatformSources]);
 
-  const handlePlatformChange = (platformType) => {
-    // Changing the platform type will not change the selected organisation (commented out)
-    setPlatformType(platformType);
-    setSelectedScan(null);
-  };
 
-  const handleScanSelect = (scan) => {
-    const selectedScan = scans.find(s => s.id === scan.id);
-    setSelectedScan(selectedScan);
-    setPlatformType(scan.type);
+  const handlePlatformSourceSelect = (platformSource) => {
+    const selectedPlatformSource = platformSources.find(s => s.id === platformSource.id);
+    setSelectedPlatformSource(selectedPlatformSource);
   };
   
   // No scan types for now
-  const filteredScans = scans
+  const filteredplatformSources = platformSources
   
   return (
     <Box sx={{ p: 3 }}>
@@ -64,20 +64,7 @@ export default function Dashboard() {
             mt: 2,
           })}
         >
-          <Stack
-            spacing={2}
-            sx={{
-              alignItems: 'center',
-              mx: 3,
-              pb: 5,
-              mt: { xs: 8, md: 0 },
-            }}
-          >
-            <Typography variant="body1" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
-              Onboarded Azure DevOps organisations
-            </Typography>
-            <MainGrid platformType={platformType} scans={filteredScans} onScanSelect={handleScanSelect} />
-          </Stack>
+            <MainGrid platformSources={filteredplatformSources} onPlatformSourceSelect={handlePlatformSourceSelect} />
         </Box>
       </Box>
     </Box>

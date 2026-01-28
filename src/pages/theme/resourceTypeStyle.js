@@ -35,13 +35,13 @@ const resourceTypeStyle = {
         radius: 7
     },
     protected_resource: {
-        fill: "#e25762",
+        fill: "#ee4266", // revamped red from #e25762
         stroke: "#fff",
         strokeWidth: 2,
         radius: 7
     },
     pipeline: {
-        fill: "#5669b3",
+        fill: "#3C4EC3", // revamped blue from #5669b3
         stroke: "#fff",
         strokeWidth: 1,
         radius: 7

@@ -14,7 +14,7 @@ import defaultSettings, { GlobalSettings } from './defaultSettings';
 import defaultLogicContainers from './defaultLogicContainers';
 import defaultBotAccounts from "./defaultBotAccounts";
 import { OBSERVES_DB_NAME } from '../../utils/dbConfig';
-import { ProjectRecord, RepositoryResource, VariableGroupResource, EndpointResource, PoolResource, QueueResource, SecureFileResource, ProjectStats, BuildDefinition, BuildDefinitionBuilds, BuildRecord } from './scanResults.types';
+import { ProjectRecord, RepositoryResource, VariableGroupResource, EndpointResource, PoolResource, QueueResource, SecureFileResource, ProjectStats, BuildDefinition, BuildDefinitionBuilds, BuildRecord } from './platformSourceResults.types';
 
 // STATIC
 
@@ -51,7 +51,7 @@ export interface Task {
         Displayname: string;
         IsExpanded: boolean;
     }[];
-    Scan: string | null;
+    PlatformSource: string | null;
     platform_type: number;
 }
 
@@ -103,11 +103,13 @@ export interface LogicContainer {
     description: string;
     criticality: LogicContainerCriticality;
     is_default: boolean;
+    is_system?: boolean; // System containers cannot be edited or deleted, only hidden
     owner: string;
     created_at: string;
     updated_at: string | null;
     projects: string[];
-    resources: string[];
+    platform_source_ids: string[]; // Which platform sources (ADO orgs) this container is available in
+    resources: Record<string, string[]>; // { [platformSourceId]: [resourceIds] } - resources scoped per platform source
 }
 
 // SAVED SEARCHES
@@ -164,9 +166,9 @@ export interface CicdSast {
 }
 
 
-export interface Scan {
+export interface PlatformSource {
     id: string;
-    scanned: string;
+    platformSourcened: string;
     organisation: {
         id?: string;
         name: string;
@@ -174,12 +176,12 @@ export interface Scan {
         type: string;
         owner?: string;
         shadow_color: string;
-        last_scan_started: string;
-        last_scan_finished: string | null;
-        last_scan_id: string;
-        scan_progress: string;
-        scanned: {
-            scan: string;
+        last_platformSource_started: string;
+        last_platformSource_finished: string | null;
+        last_platformSource_id: string;
+        platformSource_progress: string;
+        platformSourcened: {
+            platformSource: string;
             status: string;
         }[];
     };
@@ -221,17 +223,24 @@ export interface ApprovalAuthority {
     PolicyGroupids: string[];
 }
 
-interface SelectedScanRef {
-    id: string; // org name or scan id
+interface selectedPlatformSourceRef {
+    id: string; // org name or platformSource id
     type: string; // e.g., 'organisation' or other type if needed
+}
+
+interface SelectedPlatformSourceRef {
+    id: string; // platform source id
+    type: string; // e.g., 'platform_source' or other type if needed
 }
 
 interface StoreState {
     globalSettings: GlobalSettings | null,
     current_page: string;
     system_type: string;
-    scans: Scan[];
-    selectedScan: SelectedScanRef | null;
+    platformSources: PlatformSource[];
+    platformSources: PlatformSource[];
+    selectedPlatformSource: selectedPlatformSourceRef | null;
+    selectedPlatformSource: SelectedPlatformSourceRef | null;
     selectedProject: ProjectRecord | null;
     pipelines: Pipeline[];
     builds: BuildRecord[];
@@ -254,7 +263,7 @@ interface StoreState {
     pools: PoolResource[];
     queues: QueueResource[];
 
-    // New paginated state for migration away from scanresults
+    // New paginated state for migration away from platformSourceresults
     organisation: any | null;
     projects: ProjectRecord[];
     projectsTotal: number;
@@ -262,7 +271,7 @@ interface StoreState {
     projectsReferences: Record<string, string>;
 
     fetchGlobalSettings: () => Promise<void>;
-    fetchScans: () => Promise<void>;
+    fetchPlatformSources: () => Promise<void>;
     fetchPipelines: (org: string, includePreviews?: boolean) => Promise<BuildDefinition[]>;
     fetchPipelinesByOrgAndProject: (org: string, projectId: string) => Promise<BuildDefinition[]>;
     fetchBuilds: (org: string) => Promise<BuildRecord[]>;
@@ -275,7 +284,7 @@ interface StoreState {
     fetchProjects: (orgId: string, page: number, pageSize: number) => Promise<void>;
 
     getResourceCountByProject: (project_id: string, resourcetype: string) => number;
-    setSelectedScan: (organisation: Scan | null) => void;
+    setSelectedPlatformSource: (organisation: PlatformSource | null) => void;
     setSelectedProject: (project: ProjectRecord | null) => void;
     setCurrentPage: (page: string) => void;
     // current only looks at MenuLayout @TODO
@@ -283,10 +292,10 @@ interface StoreState {
     setSystemType: (system_type: string) => void;
     setResourceTypeSelected: (restype: string) => void;
 
-    // Add scan CRUD actions
-    addScan: (scanData: any) => Promise<void>;
-    deleteScan: (scanId: string) => Promise<void>;
-    // updateScan: (scanId: string, updateFn: (scan: any) => void) => Promise<void>;
+    // Add platformSource CRUD actions
+    addPlatformSource: (platformSourceData: any) => Promise<void>;
+    deletePlatformSource: (platformSourceId: string) => Promise<void>;
+    // updatePlatformSource: (platformSourceId: string, updateFn: (platformSource: any) => void) => Promise<void>;
 
     // New action to fetch project stats
     fetchProjectStats: (orgId: string, projectId: string) => Promise<any | null>;
@@ -322,7 +331,7 @@ const getDefaultDateFormat = () => {
 };
 
 const useStore = create<StoreState>((set) => ({
-    current_page: "Overview",
+    current_page: "Dashboard",
     system_type: "Azure DevOps",
     globalSettings: {
         MenuLayout: "Header",
@@ -336,7 +345,7 @@ const useStore = create<StoreState>((set) => ({
         TimeZone: "UTC",
         CompactMode: false,
         hasLogicContainerStrategy: false,
-        scanSettings: {
+        platformSourceSettings: {
             default_branch_limit: "full",
             default_build_settings_expectations: {
                 enforceReferencedRepoScopedTokens: true,
@@ -344,8 +353,8 @@ const useStore = create<StoreState>((set) => ({
             },
         }
     },
-    scans: [],
-    selectedScan: null,
+    platformSources: [],
+    selectedPlatformSource: null,
     selectedProject: null,
 
     // resources
@@ -371,11 +380,11 @@ const useStore = create<StoreState>((set) => ({
     policyGroups: [],
     approvalAuthorities: [],
 
-    // New paginated state for migration away from scanresults
+    // New paginated state for migration away from platformSourceresults
     organisation: null,
     projects: [],
     projectsTotal: 0,
-    
+
 
     getResourceCountByProject: (project_id: string, resourcetype: string): number => {
 
@@ -424,11 +433,7 @@ const useStore = create<StoreState>((set) => ({
         }
         // Query indexedDB protected_resources with helper function
         const protectedResources = await getAllRecords('protected_resources', 'byOrgAndType', [orgId, resourceType]);
-        
-        if (resourceType === 'endpoint') {
-            console.log(protectedResources);
-        }
-        
+
         return protectedResources
             .filter((resource: { id: string }) => resourceIds.map(String).includes(String(resource.id)))
             .map((resource: { id: string; name?: string; webUrl?: string; web_url?: string; url?: string }) => ({
@@ -448,14 +453,14 @@ const useStore = create<StoreState>((set) => ({
         }
     },
 
-    fetchScans: async () => {
+    fetchPlatformSources: async () => {
         try {
-            // @TODO: Fetch only the data that is needed (for landing) & selected scan is selected orgs
+            // @TODO: Fetch only the data that is needed (for landing) & selected platformSource is selected orgs
 
             // Open IndexedDB and fetch organisations
             const dbName = OBSERVES_DB_NAME;
             const storeName = "organisations";
-            // const storeName = "scanresults";
+            // const storeName = "platformSourceresults";
             await ensureObjectStore(dbName, storeName);
             const openRequest = window.indexedDB.open(dbName);
 
@@ -470,29 +475,31 @@ const useStore = create<StoreState>((set) => ({
                 const getAllRequest = objectStore.getAll();
 
                 getAllRequest.onsuccess = function () {
-                    const scans = getAllRequest.result;
-                    set({ scans });
-                    if (scans.length > 0 && !useStore.getState().selectedScan) {
-                        set({ selectedScan: { id: scans[0].id, type: scans[0].organisation?.type || 'organisation' } });
+                    const platformSources = getAllRequest.result;
+                    set({ platformSources: platformSources });
+                    if (platformSources.length > 0 && !useStore.getState().selectedPlatformSource) {
+                        set({ selectedPlatformSource: { id: platformSources[0].id, type: platformSources[0].organisation?.type || 'organisation' } });
                     }
                 };
                 getAllRequest.onerror = function (event) {
-                    console.error("Error fetching scans from IndexedDB:", event);
+                    console.error("Error fetching platformSources from IndexedDB:", event);
                 };
             };
         } catch (error) {
             console.error("Error opening IndexedDB:", error);
         }
     },
+
+
     /**
-     * Fetch pipelines (build_definitions) for a specific scanId
-     * @param {string} scanId - The ID of the scan to fetch pipelines for
+     * Fetch pipelines (build_definitions) for a specific platformSourceId
+     * @param {string} platformSourceId - The ID of the platformSource to fetch pipelines for
      * @param {boolean} includePreviews - Whether to include preview branches (default: true)
      */
-    fetchPipelines: async (scanId, includePreviews = true) => {
-        const allPipelines = await getAllRecords('build_definitions', 'byOrganisation', scanId);
+    fetchPipelines: async (platformSourceId, includePreviews = true) => {
+        const allPipelines = await getAllRecords('build_definitions', 'byOrganisation', platformSourceId);
         if (allPipelines.length === 0) {
-            console.warn(`No pipelines found for scanId: ${scanId}`);
+            console.warn(`No pipelines found for platformSourceId: ${platformSourceId}`);
             return;
         }
 
@@ -504,7 +511,7 @@ const useStore = create<StoreState>((set) => ({
         const result = [];
         for (const pipeline of allPipelines) {
             // Get all preview records for this pipeline
-            const previews = await getAllRecords('build_definitions_previews', 'byOrgAndDefinitionId', [scanId, pipeline.id]);
+            const previews = await getAllRecords('build_definitions_previews', 'byOrgAndDefinitionId', [platformSourceId, pipeline.id]);
             if (previews && previews.length > 0) {
                 // Reconstruct preview dict: { branch: previewObj, ... }
                 const previewDict = {};
@@ -539,24 +546,21 @@ const useStore = create<StoreState>((set) => ({
             console.warn(`No pipelines found for orgId: ${orgId} and projectId: ${projectId}`);
             return;
         }
-        // console.log(`Fetched ${allPipelines.length} pipelines for scanId: ${scanId}`);
         // If pipelines found, return them as the correct type
         return allPipelines as BuildDefinition[];
 
     },
 
     /**
-     * Fetch builds for a specific scanId
-     * @param scanId - The ID of the scan to fetch builds for
+     * Fetch builds for a specific platformSourceId
+     * @param platformSourceId - The ID of the platformSource to fetch builds for
      */
-    fetchBuilds: async (scanId) => {
-        // console.log("Fetching builds for scanId:", scanId);
-        const allBuilds = await getAllRecords('builds', 'byOrganisation', scanId);
+    fetchBuilds: async (platformSourceId) => {
+        const allBuilds = await getAllRecords('builds', 'byOrganisation', platformSourceId);
         if (allBuilds.length === 0) {
-            console.warn(`No builds found for scanId: ${scanId}`);
+            console.warn(`No builds found for platformSourceId: ${platformSourceId}`);
             return;
         }
-        // console.log(`Fetched ${allBuilds.length} builds for scanId: ${scanId}`);
         // If builds found, return them as the correct type
         return allBuilds as BuildRecord[];
 
@@ -577,8 +581,7 @@ const useStore = create<StoreState>((set) => ({
     },
 
 
-    fetchResources: async (scanId: string, type: string) => {
-        // console.log("Fetching resources for scanId:", scanId, "type:", type);    
+    fetchResources: async (platformSourceId: string, type: string) => {
 
         if (type == "pool_merged") {
             // Special case for pool_merged, which is a merged view of pools and queues
@@ -587,42 +590,35 @@ const useStore = create<StoreState>((set) => ({
         //check if type is empty
         if (!type || type === "") {
             // If no type is provided, return all resources
-            const allResources = await getAllRecords('protected_resources', 'byOrganisation', scanId);
+            const allResources = await getAllRecords('protected_resources', 'byOrganisation', platformSourceId);
             return allResources;
         }
 
         // check type against known resource types
-        const knownResourceTypes = ['endpoint', 'variablegroup', 'securefile', 'repository', 'pools', 'queue','deploymentgroups','environment'];
+        const knownResourceTypes = ['endpoint', 'variablegroup', 'securefile', 'repository', 'pools', 'queue', 'deploymentgroups', 'environment'];
         // If type is known, fetch resources by type check for case insensitivity
         type = type.toLowerCase();
         if (knownResourceTypes.includes(type)) {
             // If type is known, fetch resources by type
-            const allResources = await getAllRecords('protected_resources', 'byOrgAndType', [scanId, type]);
-            // console.log(`Fetched ${allResources.length} resources of type: ${type} for scanId: ${scanId}`);
+            const allResources = await getAllRecords('protected_resources', 'byOrgAndType', [platformSourceId, type]);
             if (allResources.length === 0) {
                 // If no resources found, return empty array
-                console.warn(`No resources found for type: ${type} in scanId: ${scanId}`);
+                console.warn(`No resources found for type: ${type} in platformSourceId: ${platformSourceId}`);
                 return [];
             }
             // If resources found, return them as the correct type
             switch (type) {
                 case 'endpoint':
-                    // console.log("Returning endpoints: ", allResources);
                     return allResources as EndpointResource[];
                 case 'variablegroup':
-                    // console.log("Returning variable groups: ", allResources);
                     return allResources as VariableGroupResource[];
                 case 'securefile':
-                    // console.log("Returning secure files: ", allResources);
                     return allResources as SecureFileResource[];
                 case 'repository':
-                    // console.log("Returning repositories: ", allResources);
                     return allResources as RepositoryResource[];
                 case 'pools':
-                    // console.log("Returning pools: ", allResources);
                     return allResources as PoolResource[];
                 case 'queue':
-                    // console.log("Returning queues: ", allResources);
                     return allResources as QueueResource[];
             }
             return allResources;
@@ -638,17 +634,38 @@ const useStore = create<StoreState>((set) => ({
             const dbName = OBSERVES_DB_NAME;
             const storeName = "logiccontainers";
             await ensureObjectStore(dbName, storeName);
+            
+            // Ensure global system containers always exist in the database
+            // This guarantees they're available for all platform sources
+            for (const defaultContainer of defaultLogicContainers) {
+                try {
+                    const existing = await getRecord(storeName, defaultContainer.id);
+                    if (!existing) {
+                        await addRecord(storeName, defaultContainer);
+                        console.log(`Created system logic container: ${defaultContainer.name}`);
+                    }
+                } catch (containerError) {
+                    console.error(`Error ensuring system container ${defaultContainer.id}:`, containerError);
+                    // Continue with other containers even if one fails
+                }
+            }
+            
             const logicContainers = await getAllRecords(storeName);
             if (logicContainers && logicContainers.length > 0) {
                 set({ logic_containers: logicContainers });
+            } else {
+                // Fallback: if DB is empty, use defaults in memory
+                set({ logic_containers: defaultLogicContainers });
             }
         } catch (error) {
             console.error("Error fetching logic containers from IndexedDB:", error);
+            // Fallback: use default containers in memory
             set({ logic_containers: defaultLogicContainers });
         }
     },
 
-    setSelectedScan: (scan: SelectedScanRef | null) => set({ selectedScan: scan, selectedProject: null }),
+    // setSelectedPlatformSource: (platformSource: selectedPlatformSourceRef | null) => set({ selectedPlatformSource: platformSource, selectedProject: null }),
+    setSelectedPlatformSource: (platformSource: SelectedPlatformSourceRef | null) => set({ selectedPlatformSource: platformSource, selectedProject: null }),
     setSelectedProject: (project: ProjectRecord | null) => set({ selectedProject: project }),
     setCurrentPage: (page: string) => set({ current_page: page }),
     setGlobalSettings: async (gset: GlobalSettings | null) => {
@@ -685,36 +702,48 @@ const useStore = create<StoreState>((set) => ({
     },
     setSystemType: (systype: string) => set({ system_type: systype }),
     setResourceTypeSelected: (restype: string) => set({ resource_type_selected: restype }),
-    // Add scan CRUD actions
-    addScan: async (scanData) => {
+    // Add platformSource CRUD actions
+    addPlatformSource: async (platformSourceData) => {
+        
         try {
             const dbName = OBSERVES_DB_NAME;
             const stores = [
-                // 'scanresults', 
+                // 'platformSourceresults', 
                 'organisations', 'projects', 'protected_resources',
-                'build_definitions', 'builds', 'stats', 'saved_searches'
+                'build_definitions', 'builds', 'stats', 'saved_searches',
+                'logiccontainers'
             ];
             for (const store of stores) {
                 await ensureObjectStore(dbName, store);
             }
-            // // 1. Write full scan to scanresults (legacy)
-            // await addRecord('scanresults', scanData);
-
+            
+            // Check if organization already exists and delete it first
+            if (platformSourceData.organisation?.id) {
+                const existingOrg = await getRecord('organisations', platformSourceData.organisation.id);
+                if (existingOrg) {
+                    // Organization exists, delete it and all its data first
+                    await useStore.getState().deletePlatformSource(platformSourceData.organisation.id);
+                }
+            }
+            
+            // // 1. Write full platformSource to platformSourceresults (legacy)
+            // await addRecord('platformSourceresults', platformSourceData);
             // 2. Write organisation
-            if (scanData.organisation && typeof scanData.organisation === 'object') {
+            
+            if (platformSourceData.organisation && typeof platformSourceData.organisation === 'object') {
                 await addRecord('organisations', {
-                    scan_start: scanData.scan.start,
-                    scan_end: scanData.scan.end,
-                    ...scanData.organisation
+                    scan_start: platformSourceData.scan.start,
+                    scan_end: platformSourceData.scan.end,
+                    ...platformSourceData.organisation
                 });
             }
-
+            
             // 3. Write projects (compound key: [organisation.id, project.id])
-            if (scanData.projects && scanData.organisation?.id) {
-                for (const [projectId, project] of Object.entries(scanData.projects)) {
+            if (platformSourceData.projects && platformSourceData.organisation?.id) {
+                for (const [projectId, project] of Object.entries(platformSourceData.projects)) {
                     if (project && typeof project === 'object') {
                         await addRecord('projects', {
-                            organisation: scanData.organisation.id,
+                            organisation: platformSourceData.organisation.id,
                             id: projectId,
                             ...project
                         });
@@ -723,8 +752,8 @@ const useStore = create<StoreState>((set) => ({
             }
 
             // 4. Write protected_resources (compound key: [organisation.id, resource id])
-            if (scanData.protected_resources && scanData.organisation?.id && typeof scanData.protected_resources === 'object') {
-                for (const [type, group] of Object.entries(scanData.protected_resources)) {
+            if (platformSourceData.protected_resources && platformSourceData.organisation?.id && typeof platformSourceData.protected_resources === 'object') {
+                for (const [type, group] of Object.entries(platformSourceData.protected_resources)) {
                     if (group && typeof group === 'object' && Array.isArray((group as any).protected_resources)) {
                         for (const entry of (group as any).protected_resources) {
                             let resource = entry.resource;
@@ -735,7 +764,7 @@ const useStore = create<StoreState>((set) => ({
                                     // Save branches to repo_branches store
                                     for (const branch of resource.branches) {
                                         await addRecord('repo_branches', {
-                                            organisation: scanData.organisation.id,
+                                            organisation: platformSourceData.organisation.id,
                                             repoId: resource.id,
                                             ...branch
                                         });
@@ -745,7 +774,7 @@ const useStore = create<StoreState>((set) => ({
                                     resource = restResource;
                                 }
                                 await addRecord('protected_resources', {
-                                    organisation: scanData.organisation.id,
+                                    organisation: platformSourceData.organisation.id,
                                     id: resource.id,
                                     resourceType: resourceType,
                                     type,
@@ -759,15 +788,15 @@ const useStore = create<StoreState>((set) => ({
 
             // 5. Write build_definitions (compound key: [organisation.id, buildDefId])
             // 5.1 if build_definition has a 'builds.preview' dict, write those to build_definitions_previews store
-            if (Array.isArray(scanData.build_definitions) && scanData.organisation?.id) {
-                for (const buildDef of scanData.build_definitions) {
+            if (Array.isArray(platformSourceData.build_definitions) && platformSourceData.organisation?.id) {
+                for (const buildDef of platformSourceData.build_definitions) {
                     if (buildDef && typeof buildDef === 'object' && buildDef.id) {
                         let buildDefToSave = { ...buildDef };
                         if (buildDefToSave.builds && buildDefToSave.builds.preview && typeof buildDefToSave.builds.preview === 'object') {
                             const previewDict = buildDefToSave.builds.preview;
                             for (const [branch, previewObj] of Object.entries(previewDict)) {
                                 await addRecord('build_definitions_previews', {
-                                    organisation: scanData.organisation.id,
+                                    organisation: platformSourceData.organisation.id,
                                     definitionId: buildDefToSave.id,
                                     k_project: buildDefToSave.k_project,
                                     branch,
@@ -784,7 +813,7 @@ const useStore = create<StoreState>((set) => ({
                             };
                         }
                         await addRecord('build_definitions', {
-                            organisation: scanData.organisation.id,
+                            organisation: platformSourceData.organisation.id,
                             id: buildDefToSave.id,
                             ...buildDefToSave
                         });
@@ -793,11 +822,11 @@ const useStore = create<StoreState>((set) => ({
             }
 
             // 6. Write builds (compound key: [organisation.id, buildId])
-            if (Array.isArray(scanData.builds) && scanData.organisation?.id) {
-                for (const build of scanData.builds) {
+            if (Array.isArray(platformSourceData.builds) && platformSourceData.organisation?.id) {
+                for (const build of platformSourceData.builds) {
                     if (build && typeof build === 'object' && build.id) {
                         await addRecord('builds', {
-                            organisation: scanData.organisation.id,
+                            organisation: platformSourceData.organisation.id,
                             id: build.id,
                             ...build
                         });
@@ -806,11 +835,11 @@ const useStore = create<StoreState>((set) => ({
             }
 
             // 7. Write stats (compound key: [organisation.id, projectId])
-            if (scanData.stats && scanData.organisation?.id) {
-                for (const [projectId, stats] of Object.entries(scanData.stats)) {
+            if (platformSourceData.stats && platformSourceData.organisation?.id) {
+                for (const [projectId, stats] of Object.entries(platformSourceData.stats)) {
                     if (stats && typeof stats === 'object') {
                         await addRecord('stats', {
-                            organisation: scanData.organisation.id,
+                            organisation: platformSourceData.organisation.id,
                             id: projectId,
                             ...stats
                         });
@@ -819,11 +848,11 @@ const useStore = create<StoreState>((set) => ({
             }
 
             // 8.1. Ensure default bot_accounts (compound key: [organisation.id, botAccountId])
-            if (Array.isArray(defaultBotAccounts) && scanData.organisation?.id) {
+            if (Array.isArray(defaultBotAccounts) && platformSourceData.organisation?.id) {
                 for (const botAccount of defaultBotAccounts) {
                     if (botAccount && typeof botAccount === 'object' && botAccount.id) {
                         await addRecord('bot_accounts', {
-                            organisation: scanData.organisation.id,
+                            organisation: platformSourceData.organisation.id,
                             ...botAccount
                         });
                     }
@@ -833,11 +862,11 @@ const useStore = create<StoreState>((set) => ({
             const now = new Date().toISOString();
 
             // 8.2 Write build_service_accounts (compound key: [organisation.id, serviceAccountId])
-            if (Array.isArray(scanData.build_service_accounts) && scanData.organisation?.id) {
-                for (const serviceAccount of scanData.build_service_accounts) {
+            if (Array.isArray(platformSourceData.build_service_accounts) && platformSourceData.organisation?.id) {
+                for (const serviceAccount of platformSourceData.build_service_accounts) {
                     if (serviceAccount && typeof serviceAccount === 'object' && serviceAccount.id) {
                         await addRecord('bot_accounts', {
-                            organisation: scanData.organisation.id,
+                            organisation: platformSourceData.organisation.id,
                             exactMatch: true,
                             isUpdatable: false,
                             createdAt: now,
@@ -849,11 +878,11 @@ const useStore = create<StoreState>((set) => ({
             }
 
             // 9. Write commits (compound key: [organisation, repositoryId, commitId])
-            if (Array.isArray(scanData.commits) && scanData.organisation?.id) {
-                for (const commit of scanData.commits) {
+            if (Array.isArray(platformSourceData.commits) && platformSourceData.organisation?.id) {
+                for (const commit of platformSourceData.commits) {
                     if (commit && typeof commit === 'object' && commit.commitId) {
                         await addRecord('commits', {
-                            organisation: scanData.organisation.id,
+                            organisation: platformSourceData.organisation.id,
                             ...commit
                         });
                     }
@@ -861,11 +890,11 @@ const useStore = create<StoreState>((set) => ({
             }
 
             // 10. Write committer_stats (compound key: [organisation, committerEmail])
-            if (scanData.committer_stats && scanData.organisation?.id && typeof scanData.committer_stats === 'object') {
-                for (const [committerEmail, stats] of Object.entries(scanData.committer_stats)) {
+            if (platformSourceData.committer_stats && platformSourceData.organisation?.id && typeof platformSourceData.committer_stats === 'object') {
+                for (const [committerEmail, stats] of Object.entries(platformSourceData.committer_stats)) {
                     if (stats && typeof stats === 'object') {
                         await addRecord('committer_stats', {
-                            organisation: scanData.organisation.id,
+                            organisation: platformSourceData.organisation.id,
                             committerEmail,
                             ...stats
                         });
@@ -876,11 +905,11 @@ const useStore = create<StoreState>((set) => ({
 
             // 11. Write artifactsFeeds (compound key: [organisation, feedId])
             // 11.1 Write each feeds packages to artifactsPackages (compound key: [organisation, feedId, id])
-            if (scanData.artifacts && scanData.organisation?.id) {
-                const orgId = scanData.organisation.id;
+            if (platformSourceData.artifacts && platformSourceData.organisation?.id) {
+                const orgId = platformSourceData.organisation.id;
                 const feedsToStore = [];
-                if (Array.isArray(scanData.artifacts.active)) {
-                    for (const feed of scanData.artifacts.active) {
+                if (Array.isArray(platformSourceData.artifacts.active)) {
+                    for (const feed of platformSourceData.artifacts.active) {
                         if (feed && typeof feed === 'object' && feed.id) {
                             // Save packages for this feed, and count them
                             let packagesCount = 0;
@@ -902,8 +931,8 @@ const useStore = create<StoreState>((set) => ({
                         }
                     }
                 }
-                if (Array.isArray(scanData.artifacts.recyclebin)) {
-                    for (const feed of scanData.artifacts.recyclebin) {
+                if (Array.isArray(platformSourceData.artifacts.recyclebin)) {
+                    for (const feed of platformSourceData.artifacts.recyclebin) {
                         if (feed && typeof feed === 'object' && feed.id) {
                             // Remove packages from feed before storing, add packagesCount if present
                             let packagesCount = 0;
@@ -920,48 +949,135 @@ const useStore = create<StoreState>((set) => ({
                 }
             }
 
-            await useStore.getState().fetchScans();
+            // Ensure global system logic containers exist
+            // These containers are shared across all platform sources
+            for (const defaultContainer of defaultLogicContainers) {
+                const existing = await getRecord('logiccontainers', defaultContainer.id);
+                if (!existing) {
+                    await addRecord('logiccontainers', defaultContainer);
+                }
+            }
+
+            // Create platform-specific default containers
+            if (platformSourceData.organisation?.id) {
+                const orgId = platformSourceData.organisation.id;
+                const now = new Date().toISOString();
+                
+                // Create Development container for this platform
+                const developmentContainer = {
+                    id: `Development-${orgId}`,
+                    name: `Development-${orgId}`,
+                    color: '#4CAF50',
+                    description: `Development environment for ${platformSourceData.organisation.name}`,
+                    criticality: 'low' as const,
+                    is_default: true,
+                    is_system: false,
+                    owner: 'system',
+                    created_at: now,
+                    updated_at: now,
+                    projects: [],
+                    platform_source_ids: [orgId],
+                    resources: {}
+                };
+                
+                // Create Production container for this platform
+                const productionContainer = {
+                    id: `Production-${orgId}`,
+                    name: `Production-${orgId}`,
+                    color: '#F44336',
+                    description: `Production environment for ${platformSourceData.organisation.name}`,
+                    criticality: 'high' as const,
+                    is_default: true,
+                    is_system: false,
+                    owner: 'system',
+                    created_at: now,
+                    updated_at: now,
+                    projects: [],
+                    platform_source_ids: [orgId],
+                    resources: {}
+                };
+                
+                // Add both platform-specific containers to IndexedDB
+                await addRecord('logiccontainers', developmentContainer);
+                await addRecord('logiccontainers', productionContainer);
+            }
+
+            await useStore.getState().fetchPlatformSources();
+            await useStore.getState().fetchLogicContainers();
         } catch (error) {
-            console.error('Error adding scan:', error);
+            alert('An error occurred while adding the platform source. ' + error);
+            console.error('Error adding platformSource:', error);
         }
     },
-    deleteScan: async (scanId) => {
-        // console.log("Deleting scan with ID:", scanId);
+    deletePlatformSource: async (platformSourceId) => {
+        // console.log("Deleting platformSource with ID:", platformSourceId);
         try {
-            // Delete from scanresults (legacy)
-            // await deleteRecord('scanresults', scanId);
+            // Delete from platformSourceresults (legacy)
+            // await deleteRecord('platformSourceresults', platformSourceId);
 
             // Delete from organisations
-            await deleteRecord('organisations', scanId);
+            await deleteRecord('organisations', platformSourceId);
             // Delete all records by org id using index-based deletion
             const indexDeletes = [
-                { store: 'projects', index: 'byOrganisation', value: scanId },
-                { store: 'protected_resources', index: 'byOrganisation', value: scanId },
-                { store: 'build_definitions', index: 'byOrganisation', value: scanId },
-                { store: 'builds', index: 'byOrganisation', value: scanId },
-                { store: 'stats', index: 'byOrganisation', value: scanId },
-                { store: 'bot_accounts', index: 'byOrganisation', value: scanId },
-                { store: 'commits', index: 'byOrganisation', value: scanId },
-                { store: 'committer_stats', index: 'byOrganisation', value: scanId },
-                { store: 'repo_branches', index: 'byOrganisation', value: scanId },
-                { store: 'artifactsFeeds', index: 'byOrganisation', value: scanId },
-                { store: 'artifactsPackages', index: 'byOrganisation', value: scanId },
+                { store: 'projects', index: 'byOrganisation', value: platformSourceId },
+                { store: 'protected_resources', index: 'byOrganisation', value: platformSourceId },
+                { store: 'build_definitions', index: 'byOrganisation', value: platformSourceId },
+                { store: 'build_definitions_previews', index: 'byOrganisation', value: platformSourceId },
+                { store: 'builds', index: 'byOrganisation', value: platformSourceId },
+                { store: 'stats', index: 'byOrganisation', value: platformSourceId },
+                { store: 'bot_accounts', index: 'byOrganisation', value: platformSourceId },
+                { store: 'commits', index: 'byOrganisation', value: platformSourceId },
+                { store: 'committer_stats', index: 'byOrganisation', value: platformSourceId },
+                { store: 'repo_branches', index: 'byOrganisation', value: platformSourceId },
+                { store: 'artifactsFeeds', index: 'byOrganisation', value: platformSourceId },
+                { store: 'artifactsPackages', index: 'byOrganisation', value: platformSourceId },
             ];
             for (const { store, index, value } of indexDeletes) {
                 await deleteAllRecords(store, index, value);
             }
-            await useStore.getState().fetchScans();
+            
+            // Clean up user-created logic containers (skip system containers)
+            // System containers are global and cannot be deleted
+            const allContainers = await getAllRecords('logiccontainers');
+            for (const container of allContainers) {
+                // Skip system containers
+                if (container.is_system) {
+                    continue;
+                }
+                
+                if (container.platform_source_ids && container.platform_source_ids.includes(platformSourceId)) {
+                    const remainingPlatformSources = container.platform_source_ids.filter((id: string) => id !== platformSourceId);
+                    
+                    if (remainingPlatformSources.length === 0) {
+                        // Container is only used by this platform source, delete it
+                        await deleteRecord('logiccontainers', container.id);
+                    } else {
+                        // Container is used by other platform sources, just remove this one
+                        const updatedResources = { ...container.resources };
+                        delete updatedResources[platformSourceId];
+                        
+                        await updateRecord('logiccontainers', container.id, (existing: any) => ({
+                            ...existing,
+                            platform_source_ids: remainingPlatformSources,
+                            resources: updatedResources,
+                            updated_at: new Date().toISOString()
+                        }));
+                    }
+                }
+            }
+            
+            await useStore.getState().fetchPlatformSources();
         } catch (error) {
-            console.error('Error deleting scan:', error);
+            console.error('Error deleting platformSource:', error);
         }
     },
-    // updateScan: async (scanId, updateFn) => {
+    // updatePlatformSource: async (platformSourceId, updateFn) => {
     //     try {
-    //         const storeName = 'scanresults';
-    //         await updateRecord(storeName, scanId, updateFn);
-    //         await useStore.getState().fetchScans();
+    //         const storeName = 'platformSourceresults';
+    //         await updateRecord(storeName, platformSourceId, updateFn);
+    //         await useStore.getState().fetchPlatformSources();
     //     } catch (error) {
-    //         console.error('Error updating scan:', error);
+    //         console.error('Error updating platformSource:', error);
     //     }
     // },
     // Fetch a single organisation by ID
@@ -999,7 +1115,7 @@ const useStore = create<StoreState>((set) => ({
                 limit: pageSize
             });
         }
-            const total = await getCount('protected_resources', 'byResourceTypeAndOrgAndKProject', ['repository', orgId, projectId]);
+        const total = await getCount('protected_resources', 'byResourceTypeAndOrgAndKProject', ['repository', orgId, projectId]);
 
         // If includeBranches, fetch branches for each repo
         if (includeBranches) {
@@ -1046,6 +1162,13 @@ const useStore = create<StoreState>((set) => ({
 
     updateLogicContainer: async (logicContainerId: String, updated: LogicContainer) => {
         try {
+            // Prevent updating system containers
+            const existing = await getRecord('logiccontainers', logicContainerId);
+            if (existing?.is_system) {
+                console.warn('Cannot update system logic container:', logicContainerId);
+                return;
+            }
+            
             await updateRecord(
                 "logiccontainers",
                 logicContainerId,
@@ -1072,6 +1195,13 @@ const useStore = create<StoreState>((set) => ({
 
     deleteLogicContainer: async (id: string) => {
         try {
+            // Prevent deleting system containers
+            const existing = await getRecord('logiccontainers', id);
+            if (existing?.is_system) {
+                console.warn('Cannot delete system logic container:', id);
+                return;
+            }
+            
             await deleteRecord('logiccontainers', id);
             await useStore.getState().fetchLogicContainers();
         } catch (error) {
@@ -1110,7 +1240,7 @@ const useStore = create<StoreState>((set) => ({
         const filtered = allFeeds.filter(feed =>
             !feed.k_project || (feed.k_project && feed.k_project.id === projectId)
         );
-        return {feeds: filtered, total: filtered.length};
+        return { feeds: filtered, total: filtered.length };
     },
 
     // Saved searches CRUD operations
@@ -1137,7 +1267,7 @@ const useStore = create<StoreState>((set) => ({
                 createdAt: now,
                 updatedAt: now
             };
-            
+
             await addRecord('saved_searches', savedSearch);
             await useStore.getState().fetchSavedSearches();
         } catch (error) {

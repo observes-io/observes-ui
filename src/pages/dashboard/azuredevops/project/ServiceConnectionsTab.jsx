@@ -23,7 +23,7 @@ import {
     Select,
     Chip
 } from '@mui/material';
-import useStore from '../../../state/stores/store';
+import useStore from '../../../../state/stores/store';
 
 
 const ServiceConnectionsTab = ({ projectId }) => {
@@ -37,15 +37,15 @@ const ServiceConnectionsTab = ({ projectId }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    const { selectedScan, fetchEndpointsByOrgAndProject } = useStore();
+    const { selectedPlatformSource, fetchEndpointsByOrgAndProject } = useStore();
 
     useEffect(() => {
         async function fetchConnections() {
             setLoading(true);
             setError(null);
             try {
-                if (selectedScan && selectedScan.id && projectId) {
-                    const result = await fetchEndpointsByOrgAndProject(selectedScan.id, projectId);
+                if (selectedPlatformSource && selectedPlatformSource.id && projectId) {
+                    const result = await fetchEndpointsByOrgAndProject(selectedPlatformSource.id, projectId);
                     let allConnections = [];
                     if (result && Array.isArray(result.resources)) {
                         allConnections = result.resources;
@@ -66,7 +66,7 @@ const ServiceConnectionsTab = ({ projectId }) => {
             setLoading(false);
         }
         fetchConnections();
-    }, [selectedScan, projectId, fetchEndpointsByOrgAndProject]);
+    }, [selectedPlatformSource, projectId, fetchEndpointsByOrgAndProject]);
 
     // Filtered connections and local pagination
     const filteredConnections = serviceConnectionsSearch

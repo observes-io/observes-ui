@@ -8,13 +8,14 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 */
 
 import { useState, useEffect } from 'react';
-import { CircularProgress, Box, Divider, Button, Typography, List, ListItem, ListItemText, Dialog, DialogActions, DialogContent, DialogTitle, TextField, MenuItem, Checkbox, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from '@mui/material';
+import { CircularProgress, Box, Divider, Button, Typography, List, ListItem, ListItemText, Dialog, DialogActions, DialogContent, DialogTitle, TextField, MenuItem, Checkbox, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, ListItemButton, ListItemIcon, Grid, Card, CardContent } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { useColorScheme } from '@mui/material/styles';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import RadarIcon from '@mui/icons-material/Radar';
 
 import ResourceTable from '../resource/ResourceTable';
 import ResourceButtonGroup from '../components/ResourceButtonGroup';
@@ -23,12 +24,421 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import AutoModeIcon from '@mui/icons-material/AutoMode';
 import { OBSERVES_DB_NAME } from '../../utils/dbConfig';
 import { resourceTypes } from '../../utils/resourceTypes';
+import { filterContainersByPlatformSource } from '../../utils/logicContainerHelpers';
 
+import { useAuth } from '../../contexts/AuthContext';
+
+// Component for Logic Containers section - MUST be outside Platform to prevent remounting on re-renders
+const LogicContainersSettings = ({ 
+  logic_containers, 
+  selectedPlatformSource, 
+  platformSources,
+  newContainer, 
+  setNewContainer, 
+  nameError, 
+  setNameError,
+  open, 
+  setOpen, 
+  editMode, 
+  setEditMode,
+  handleChange,
+  handleCreate,
+  handleEdit,
+  handleDelete,
+  handleUpdate,
+  handleClose,
+  systemMode
+}) => {
+  // Filter logic containers by current platform source
+  const filteredLogicContainers = selectedPlatformSource
+    ? filterContainersByPlatformSource(logic_containers, selectedPlatformSource.id)
+    : logic_containers;
+
+  return (
+    <Card>
+      <CardContent>
+        <Typography variant="h5" gutterBottom fontWeight="bold">
+          Logic Container Management
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Define and manage logical containers for organizing your CI/CD resources.
+          {selectedPlatformSource && (
+            <> Currently showing containers for: <strong>{selectedPlatformSource.organisation?.name || selectedPlatformSource.id}</strong></>
+          )}
+        </Typography>
+        <Divider sx={{ mb: 3 }} />
+        <TableContainer component={Paper} sx={{ mt: 2, maxHeight: '20%', overflowY: 'auto' }}>
+          <Table stickyHeader size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Name</TableCell>
+                <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Description</TableCell>
+                <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Criticality</TableCell>
+                <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Owner</TableCell>
+                <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Color</TableCell>
+                <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Default</TableCell>
+                <TableCell align="right" sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {Array.isArray(filteredLogicContainers)
+                ? filteredLogicContainers.map((container) => (
+                  <TableRow key={container.id} sx={{ height: 28 }}>
+                    <TableCell sx={{ py: 0.5, px: 1 }}>{container.name}</TableCell>
+                    <TableCell sx={{ py: 0.5, px: 1 }}>{container.description}</TableCell>
+                    <TableCell sx={{ py: 0.5, px: 1 }}>{container.criticality}</TableCell>
+                    <TableCell sx={{ py: 0.5, px: 1 }}>{container.owner}</TableCell>
+                    <TableCell sx={{ py: 0.5, px: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Box sx={{ width: 14, height: 14, bgcolor: container.color, borderRadius: '50%', mr: 0.5, border: '1px solid #ccc' }} />
+                        <span style={{ fontSize: '0.85em' }}>{container.color}</span>
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ py: 0.5, px: 1 }}>{container.is_default ? 'Yes' : 'No'}</TableCell>
+                    <TableCell align="right" sx={{ py: 0.5, px: 1 }}>
+                      <IconButton sx={{ mx: 1 }} color="primary" size="small" onClick={() => handleEdit(container)}>
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton sx={{ mx: 1 }} color="error" size="small" onClick={() => handleDelete(container.id)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))
+                : null}
+              {filteredLogicContainers.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} sx={{ textAlign: 'center', py: 3 }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No logic containers available for this platform source. Create one below or select it in an existing container.
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+              <TableRow sx={{ height: 28 }}>
+                <TableCell sx={{ py: 0.5, px: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', position: 'relative' }}>
+                    <TextField
+                      size="small"
+                      name="name"
+                      value={newContainer.name}
+                      onChange={e => {
+                        handleChange(e);
+                        if (nameError && e.target.value.trim() !== '') setNameError(false);
+                      }}
+                      placeholder="Name"
+                      error={nameError}
+                      slotProps={{ htmlInput: { style: { fontSize: 13, padding: 4 } } }}
+                      sx={{
+                        '& .MuiInputBase-input::placeholder': {
+                          color: systemMode === 'dark' ? '#bbb' : '#888',
+                          opacity: 1,
+                        },
+                      }}
+                      helperText={nameError ? (
+                        <span style={{ display: 'flex', alignItems: 'center', marginTop: '0.25rem' }}>
+                          <WarningAmberIcon sx={{ color: 'red', fontSize: 18, mr: 0.5 }} />
+                          <span style={{ color: 'red' }}>Name is required.</span>
+                        </span>
+                      ) : ''}
+                      // slotProps={{
+                      //   htmlInput: { style: { fontSize: 13, padding: 4 } },
+                      //   formHelperText: { style: { color: 'red', marginLeft: 0 } }
+                      // }}
+                    />
+                  </Box>
+                </TableCell>
+                <TableCell sx={{ py: 0.5, px: 1 }}>
+                  <TextField size="small" name="description" value={newContainer.description} onChange={handleChange} placeholder="Description"
+                    slotProps={{
+                      htmlInput: {
+                        style: { fontSize: 13, padding: 4 }
+                      }
+                    }}
+                    sx={{
+                      '& .MuiInputBase-input::placeholder': {
+                        color: systemMode === 'dark' ? '#bbb' : '#888',
+                        opacity: 1,
+                      },
+                    }}
+                  />
+                </TableCell>
+                <TableCell sx={{ py: 0.5, px: 1 }}>
+                  <TextField size="small" name="criticality" value={newContainer.criticality} onChange={handleChange} placeholder="Criticality"
+                    select
+                    slotProps={{
+                      htmlInput: {
+                        style: { fontSize: 13, padding: 4 }
+                      }
+                    }}
+                    sx={{
+                      '& .MuiInputBase-input::placeholder': {
+                        color: systemMode === 'dark' ? '#bbb' : '#888',
+                        opacity: 1,
+                      },
+                    }}
+                  >
+                    <MenuItem value="none">None</MenuItem>
+                    <MenuItem value="info">Info</MenuItem>
+                    <MenuItem value="low">Low</MenuItem>
+                    <MenuItem value="medium">Medium</MenuItem>
+                    <MenuItem value="high">High</MenuItem>
+                    <MenuItem value="critical">Critical</MenuItem>
+                  </TextField>
+                </TableCell>
+                <TableCell sx={{ py: 0.5, px: 1 }}>
+                  <TextField size="small" name="owner" value={newContainer.owner || ''} onChange={handleChange} placeholder="Owner"
+                    slotProps={{ htmlInput: { style: { fontSize: 13, padding: 4 }, readOnly: true, tabIndex: -1 } }}
+                    sx={{
+                      '& .MuiInputBase-input::placeholder': {
+                        color: systemMode === 'dark' ? '#bbb' : '#888',
+                        opacity: 1,
+                      },
+                    }}
+                  />
+                </TableCell>
+                <TableCell sx={{ py: 0.5, px: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <input
+                      type="color"
+                      name="color"
+                      value={newContainer.color || '#98a192'}
+                      onChange={e => handleChange({ target: { name: 'color', value: e.target.value } })}
+                      style={{ width: 32, height: 32, border: 'none', background: 'none', padding: 0, marginRight: 8, cursor: 'pointer' }}
+                    />
+                    <Typography variant="body2" sx={{ minWidth: 60, fontSize: 13, color: systemMode === 'dark' ? '#bbb' : '#444' }}>
+                      {newContainer.color || '#98a192'}
+                    </Typography>
+                  </Box>
+                </TableCell>
+                <TableCell sx={{ py: 0.5, px: 1 }}>
+                  <Checkbox checked={!!newContainer.is_default} name="is_default" onChange={e => setNewContainer(prev => ({ ...prev, is_default: e.target.checked, }))} size="small" sx={{ p: 0.5 }} />
+                </TableCell>
+                <TableCell align="right" sx={{ py: 0.5, px: 1 }}>
+                  <IconButton color="success" size="small" onClick={() => {
+                    if (!newContainer.name || newContainer.name.trim() === '') {
+                      setNameError(true);
+                      return;
+                    }
+                    handleCreate();
+                  }}>
+                    <AddIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+          <DialogTitle>{editMode ? 'Edit Logic Container' : 'New Logic Container'}</DialogTitle>
+          <DialogContent>
+            <TextField
+              margin="dense"
+              label="Name"
+              name="name"
+              value={newContainer.name}
+              onChange={e => {
+                handleChange(e);
+                if (nameError && e.target.value.trim() !== '') setNameError(false);
+              }}
+              fullWidth
+              variant="outlined"
+              sx={{ mb: 2 }}
+              error={nameError}
+              helperText={nameError ? (
+                <span style={{ display: 'flex', alignItems: 'center', marginTop: '0.25rem' }}>
+                  <WarningAmberIcon sx={{ color: 'red', fontSize: 18, mr: 0.5 }} />
+                  <span style={{ color: 'red' }}>Name is required.</span>
+                </span>
+              ) : ''}
+              slotProps={{
+                formHelperText: { style: { color: 'red', marginLeft: 0 } }
+              }}
+            />
+            <TextField
+              margin="dense"
+              label="Description"
+              name="description"
+              value={newContainer.description}
+              onChange={handleChange}
+              fullWidth
+              variant="outlined"
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              margin="dense"
+              label="Criticality"
+              name="criticality"
+              value={newContainer.criticality}
+              onChange={handleChange}
+              select
+              fullWidth
+              variant="outlined"
+              sx={{ mb: 2 }}
+            >
+              <MenuItem value="none">None</MenuItem>
+              <MenuItem value="info">Info</MenuItem>
+              <MenuItem value="low">Low</MenuItem>
+              <MenuItem value="medium">Medium</MenuItem>
+              <MenuItem value="high">High</MenuItem>
+              <MenuItem value="critical">Critical</MenuItem>
+            </TextField>
+            <TextField
+              margin="dense"
+              label="Owner"
+              name="owner"
+              value={newContainer.owner || ''}
+              onChange={handleChange}
+              fullWidth
+              variant="outlined"
+              sx={{ mb: 2 }}
+              slotProps={{ htmlInput: { readOnly: true, tabIndex: -1 } }}
+            />
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
+              <label htmlFor="edit-color-picker" style={{ marginRight: 8 }}>Color:</label>
+              <input
+                id="edit-color-picker"
+                type="color"
+                name="color"
+                value={newContainer.color || '#98a192'}
+                onChange={e => handleChange({ target: { name: 'color', value: e.target.value } })}
+                style={{ width: 32, height: 32, border: 'none', background: 'none', padding: 0, marginRight: 8, cursor: 'pointer' }}
+              />
+              <Typography variant="body2" sx={{ minWidth: 60, fontSize: 13, color: systemMode === 'dark' ? '#bbb' : '#444' }}>
+                {newContainer.color || '#98a192'}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <Checkbox
+                checked={!!newContainer.is_default}
+                name="is_default"
+                onChange={e =>
+                  setNewContainer(prev => ({
+                    ...prev,
+                    is_default: e.target.checked,
+                  }))
+                }
+              />
+              <Typography variant="body2">Is Default</Typography>
+            </Box>
+            <TextField
+              margin="dense"
+              label="Platform Sources (Organizations)"
+              name="platform_source_ids"
+              value={Array.isArray(newContainer.platform_source_ids) ? newContainer.platform_source_ids : []}
+              onChange={e =>
+                setNewContainer(prev => ({
+                  ...prev,
+                  platform_source_ids: e.target.value,
+                }))
+              }
+              select
+              slotProps={{
+                select: {
+                  multiple: true,
+                  renderValue: (selected) => {
+                    if (!Array.isArray(selected) || selected.length === 0) return 'None selected';
+                    return selected.map(id => {
+                      const ps = platformSources.find(p => p.id === id);
+                      return ps ? ps.id : id;
+                    }).join(', ');
+                  }
+                }
+              }}
+              fullWidth
+              variant="outlined"
+              sx={{ mb: 2 }}
+              helperText={
+                editMode 
+                  ? "Select which ADO organizations this logic container can be used in"
+                  : `Will be created in current platform source: ${selectedPlatformSource?.organisation?.name || 'Unknown'}. You can add more organizations here.`
+              }
+            >
+              {Array.isArray(platformSources) && platformSources.map(ps => (
+                <MenuItem key={ps.id} value={ps.id}>
+                  <Checkbox 
+                    checked={Array.isArray(newContainer.platform_source_ids) && newContainer.platform_source_ids.includes(ps.id)} 
+                  />
+                  {ps.organisation?.name || ps.id}
+                </MenuItem>
+              ))}
+            </TextField>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleClose}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!newContainer.name || newContainer.name.trim() === '') {
+                  setNameError(true);
+                  return;
+                }
+                editMode ? handleUpdate() : handleCreate();
+              }}
+              variant="contained"
+              color="primary"
+            >
+              {editMode ? 'Update' : 'Create'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </CardContent>
+    </Card>
+  );
+};
+
+// Component for Resource Lifecycle section - MUST be outside Platform to prevent remounting on re-renders
+const ResourceLifecycleSettings = ({
+  resource_type_selected,
+  resourceTypes,
+  handleResourceTypeChange,
+  selectedPlatformSource,
+  filteredProtectedResources,
+  logic_containers,
+  fetchLogicContainers
+}) => (
+  <Card>
+    <CardContent>
+      <Typography variant="h5" gutterBottom fontWeight="bold">
+        CI/CD Resource Lifecycle
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        Manage the lifecycle of your CI/CD platform resources across different environments.
+      </Typography>
+      <Divider sx={{ mb: 3 }} />
+
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2, mb: 2 }}>
+        <ResourceButtonGroup
+          resourceTypes={resourceTypes.filter(rt => !rt.disabled)}
+          resourceType={resource_type_selected}
+          handleResourceTypeChange={handleResourceTypeChange}
+        />
+      </Box>
+      {!selectedPlatformSource ? (
+        <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
+          <CircularProgress size={80} style={{ color: 'purple' }} />
+        </Box>
+      ) : (
+        <>
+          <ResourceTable
+            filteredBadge={0}
+            selectedType={resource_type_selected}
+            filteredProtectedResources={filteredProtectedResources}
+            logicContainers={logic_containers}
+            projects={selectedPlatformSource.projects}
+            filterFocus={false}
+            onLogicContainerChange={fetchLogicContainers}
+          />
+        </>
+      )}
+    </CardContent>
+  </Card>
+);
 
 const Platform = ({ }) => {
 
+  const { user } = useAuth();
   const { systemMode } = useColorScheme();
-  const { globalSettings, selectedProject, selectedScan, resource_type_selected, logic_containers, fetchGlobalSettings, setGlobalSettings, setCurrentPage, setResourceTypeSelected, fetchLogicContainers, fetchResources, createLogicContainer, updateLogicContainer, deleteLogicContainer } = useStore();
+  const { globalSettings, selectedProject, selectedPlatformSource, platformSources, resource_type_selected, logic_containers, fetchGlobalSettings, setGlobalSettings, setCurrentPage, setResourceTypeSelected, fetchLogicContainers, fetchResources, createLogicContainer, updateLogicContainer, deleteLogicContainer } = useStore();
 
   // Local state for large resources
   const [endpoints, setEndpoints] = useState([]);
@@ -36,6 +446,7 @@ const Platform = ({ }) => {
   const [repositories, setRepositories] = useState([]);
   const [pools, setPools] = useState([]);
   const [secureFiles, setSecureFiles] = useState([]);
+  const [environments, setEnvironments] = useState([]);
 
   const [logic_container_filter, setlogic_container_filter] = useState('all');
 
@@ -55,11 +466,24 @@ const Platform = ({ }) => {
     created_at: '',
     updated_at: '',
     projects: [],
+    platform_source_ids: [],
+    resources: {},
   });
 
-  const [showLogicContainerManagement, setShowLogicContainerManagement] = useState(true);
-  const [showResourceLifecycleManagement, setShowResourceLifecycleManagement] = useState(true);
+  const [selectedSection, setSelectedSection] = useState('logicContainers');
   const [selectedContainerId, setSelectedContainerId] = useState(null);
+
+  // Check if user is tenant admin - FOR DEVELOPMENT PURPOSES, DEFAULT TO TRUE
+  const isTenantAdmin = user?.roles?.includes('TenantAdmin') || true;
+
+  useEffect(() => {
+    setCurrentPage("Platform Manager");
+  }, [setCurrentPage]);
+
+  const menuItems = [
+    { id: 'logicContainers', label: 'Logic Containers', icon: <AccountTreeIcon />, show: true },
+    { id: 'resourceLifecycle', label: 'Resource Lifecycle', icon: <AutoModeIcon />, show: isTenantAdmin },
+  ];
 
 
   // Help Dialog State
@@ -70,15 +494,17 @@ const Platform = ({ }) => {
   useEffect(() => {
     fetchGlobalSettings();
 
-    if (selectedScan) {
+    if (selectedPlatformSource) {
       fetchLogicContainers();
-      fetchResources(selectedScan.id, 'endpoint').then(setEndpoints);
-      fetchResources(selectedScan.id, 'variablegroup').then(setVariableGroups);
-      fetchResources(selectedScan.id, 'repository').then(setRepositories);
-      fetchResources(selectedScan.id, 'pool_merged').then(setPools);
-      fetchResources(selectedScan.id, 'securefile').then(setSecureFiles);
+      fetchResources(selectedPlatformSource.id, 'endpoint').then(setEndpoints);
+      fetchResources(selectedPlatformSource.id, 'variablegroup').then(setVariableGroups);
+      fetchResources(selectedPlatformSource.id, 'repository').then(setRepositories);
+      fetchResources(selectedPlatformSource.id, 'pool_merged').then(setPools);
+      fetchResources(selectedPlatformSource.id, 'securefile').then(setSecureFiles);
+      fetchResources(selectedPlatformSource.id, 'environment').then(setEnvironments);
     }
-  }, [selectedScan, fetchLogicContainers, fetchResources, fetchGlobalSettings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlatformSource]);
 
   // useEffect(() => {
   //   if (globalSettings && !globalSettings.hasLogicContainerStrategy) {
@@ -122,10 +548,34 @@ const Platform = ({ }) => {
     if (logic_container_filter_id === "all") {
       return resources;
     }
-    return resources.filter(resource =>
-      resource.logic_container_ids &&
-      resource.logic_container_ids.includes(logic_container_filter_id)
-    );
+    
+    // Get the logic container
+    const container = logic_containers.find(lc => lc.id === logic_container_filter_id);
+    if (!container) {
+      return resources;
+    }
+    
+    // Get current platform source ID
+    const platformSourceId = selectedPlatformSource?.id;
+    if (!platformSourceId) {
+      return resources;
+    }
+    
+    // Get resources for this platform source from the container
+    const containerResourceIds = container.resources && container.resources[platformSourceId] 
+      ? container.resources[platformSourceId] 
+      : [];
+    
+    // Filter resources - check both new format (container.resources) and old format (resource.logic_container_ids)
+    return resources.filter(resource => {
+      const resourceIdStr = String(resource.id);
+      // Check new format (platform source scoped)
+      const inContainerResources = containerResourceIds.map(String).includes(resourceIdStr);
+      // Check old format (for backwards compatibility)
+      const inResourceLogicContainers = resource.logic_container_ids && 
+        resource.logic_container_ids.includes(logic_container_filter_id);
+      return inContainerResources || inResourceLogicContainers;
+    });
   }
 
   function filterResourcesBySearchTerm(resources, searchTerm) {
@@ -157,6 +607,9 @@ const Platform = ({ }) => {
       break;
     case 'securefile':
       filteredProtectedResources = secureFiles;
+      break;
+    case 'environment':
+      filteredProtectedResources = environments;
       break;
     default:
       break;
@@ -194,6 +647,8 @@ const Platform = ({ }) => {
       ...container,
       // fallback for missing fields
       projects: container.projects || [],
+      platform_source_ids: container.platform_source_ids || [],
+      resources: container.resources || {},
       created_at: container.created_at || '',
       updated_at: container.updated_at || '',
     });
@@ -218,6 +673,13 @@ const Platform = ({ }) => {
 
   const handleCreate = async () => {
     const now = new Date().toISOString();
+    
+    // Automatically add current platform source if not already included
+    let platformSourceIds = Array.isArray(newContainer.platform_source_ids) ? newContainer.platform_source_ids : [];
+    if (selectedPlatformSource && !platformSourceIds.includes(selectedPlatformSource.id)) {
+      platformSourceIds = [...platformSourceIds, selectedPlatformSource.id];
+    }
+    
     const containerToSend = {
       id: newContainer.name,
       name: newContainer.name,
@@ -229,9 +691,12 @@ const Platform = ({ }) => {
       created_at: now,
       updated_at: now,
       projects: Array.isArray(newContainer.projects) ? newContainer.projects : [],
+      platform_source_ids: platformSourceIds,
+      resources: newContainer.resources || {},
     };
 
     await createLogicContainer(containerToSend);
+    await fetchLogicContainers();
     handleClose();
   };
 
@@ -243,8 +708,11 @@ const Platform = ({ }) => {
       created_at: created_at || now,
       updated_at: now,
       projects: Array.isArray(newContainer.projects) ? newContainer.projects : [],
+      platform_source_ids: Array.isArray(newContainer.platform_source_ids) ? newContainer.platform_source_ids : [],
+      resources: newContainer.resources || {},
     };
     await updateLogicContainer(containerToSend.id, containerToSend);
+    await fetchLogicContainers();
     handleClose();
   };
 
@@ -255,6 +723,7 @@ const Platform = ({ }) => {
 
   const handleDelete = async (id) => {
     await deleteLogicContainer(id);
+    await fetchLogicContainers();
   };
 
   const handleClose = () => {
@@ -271,401 +740,127 @@ const Platform = ({ }) => {
       created_at: '',
       updated_at: '',
       projects: [],
+      platform_source_ids: [],
+      resources: {},
     });
   };
 
+  const renderContent = () => {
+    switch (selectedSection) {
+      case 'logicContainers':
+        return <LogicContainersSettings 
+          logic_containers={logic_containers}
+          selectedPlatformSource={selectedPlatformSource}
+          platformSources={platformSources}
+          newContainer={newContainer}
+          setNewContainer={setNewContainer}
+          nameError={nameError}
+          setNameError={setNameError}
+          open={open}
+          setOpen={setOpen}
+          editMode={editMode}
+          setEditMode={setEditMode}
+          handleChange={handleChange}
+          handleCreate={handleCreate}
+          handleEdit={handleEdit}
+          handleDelete={handleDelete}
+          handleUpdate={handleUpdate}
+          handleClose={handleClose}
+          systemMode={systemMode}
+        />;
+      case 'resourceLifecycle':
+        return <ResourceLifecycleSettings 
+          resource_type_selected={resource_type_selected}
+          resourceTypes={resourceTypes}
+          handleResourceTypeChange={handleResourceTypeChange}
+          selectedPlatformSource={selectedPlatformSource}
+          filteredProtectedResources={filteredProtectedResources}
+          logic_containers={logic_containers}
+          fetchLogicContainers={fetchLogicContainers}
+        />;
+      default:
+        return <LogicContainersSettings 
+          logic_containers={logic_containers}
+          selectedPlatformSource={selectedPlatformSource}
+          platformSources={platformSources}
+          newContainer={newContainer}
+          setNewContainer={setNewContainer}
+          nameError={nameError}
+          setNameError={setNameError}
+          open={open}
+          setOpen={setOpen}
+          editMode={editMode}
+          setEditMode={setEditMode}
+          handleChange={handleChange}
+          handleCreate={handleCreate}
+          handleEdit={handleEdit}
+          handleDelete={handleDelete}
+          handleUpdate={handleUpdate}
+          handleClose={handleClose}
+          systemMode={systemMode}
+        />;
+    }
+  };
+
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h3" gutterBottom sx={{ fontSize: '1.3rem' }}>
-        Platform Manager
-      </Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', mb: 3, gap: 2 }}>
-        <Box sx={{ display: 'flex', width: '40%', alignItems: 'center', gap: 2 }}>
-          <Typography variant="body1" gutterBottom>
-            Establish a lifecycle management system for your CICD platform resources by defining logical containers, onboarding resources and applying conditions of access that are enforced in your pipelines.
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', flex: 1, gap: 3, justifyContent: 'center', alignItems: 'center' }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', justifyContent: 'center', height: '100%' }} onClick={() => setShowLogicContainerManagement(prev => !prev)}>
-            <Button
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                textAlign: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                bgcolor: (theme) => showLogicContainerManagement
-                  ? (systemMode === 'dark' ? theme.palette.grey[800] : theme.palette.grey[100])
-                  : 'transparent',
-                '&:hover': {
-                  bgcolor: (theme) => showLogicContainerManagement
-                    ? (systemMode === 'dark' ? theme.palette.grey[700] : theme.palette.grey[200])
-                    : (systemMode === 'dark' ? theme.palette.grey[800] : theme.palette.grey[100]),
-                },
-                transition: 'background 0.2s',
-              }}
-            >
-              <AccountTreeIcon sx={{ fontSize: 48 }} />
-              <Typography variant="caption" sx={{ mt: 1 }}>Manage Logic Containers</Typography>
-            </Button>
-          </Box>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', justifyContent: 'center', height: '100%' }} onClick={() => setShowResourceLifecycleManagement(prev => !prev)}>
-            <Button
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                textAlign: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                bgcolor: (theme) => showResourceLifecycleManagement
-                  ? (systemMode === 'dark' ? theme.palette.grey[800] : theme.palette.grey[100])
-                  : 'transparent',
-                '&:hover': {
-                  bgcolor: (theme) => showResourceLifecycleManagement
-                    ? (systemMode === 'dark' ? theme.palette.grey[700] : theme.palette.grey[200])
-                    : (systemMode === 'dark' ? theme.palette.grey[800] : theme.palette.grey[100]),
-                },
-                transition: 'background 0.2s',
-              }}
-            >
-              <AutoModeIcon sx={{ fontSize: 48 }} />
-              <Typography variant="caption" sx={{ mt: 1 }}>CI/CD Resource Lifecycle</Typography>
-            </Button>
-          </Box>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', justifyContent: 'center', height: '100%' }}>
-            <HelpOutlineIcon
-              sx={{ fontSize: 18, color: 'grey', mb: 6, cursor: 'pointer' }}
-              onClick={() => setOpenHelpDialog(true)}
-            />
-          </Box>
-        </Box>
-      </Box>
-
-
-      {showLogicContainerManagement && (
-        <Box>
-          <Typography variant="h5" gutterBottom>
-            Logic Container Management
-          </Typography>
-          <TableContainer component={Paper} sx={{ mt: 2, maxHeight: '20%', overflowY: 'auto' }}>
-            <Table stickyHeader size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Name</TableCell>
-                  <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Description</TableCell>
-                  <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Criticality</TableCell>
-                  <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Owner</TableCell>
-                  <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Color</TableCell>
-                  <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Default</TableCell>
-                  {/* <TableCell sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Projects</TableCell> */}
-                  <TableCell align="right" sx={{ py: 0.5, px: 1, overflow: 'hidden', textAlign: 'center', fontWeight: 'bold' }}>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {Array.isArray(logic_containers)
-                  ? logic_containers.map((container) => (
-                    <TableRow key={container.id} sx={{ height: 28 }}>
-                      <TableCell sx={{ py: 0.5, px: 1 }}>{container.name}</TableCell>
-                      <TableCell sx={{ py: 0.5, px: 1 }}>{container.description}</TableCell>
-                      <TableCell sx={{ py: 0.5, px: 1 }}>{container.criticality}</TableCell>
-                      <TableCell sx={{ py: 0.5, px: 1 }}>{container.owner}</TableCell>
-                      <TableCell sx={{ py: 0.5, px: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Box sx={{ width: 14, height: 14, bgcolor: container.color, borderRadius: '50%', mr: 0.5, border: '1px solid #ccc' }} />
-                          <span style={{ fontSize: '0.85em' }}>{container.color}</span>
-                        </Box>
-                      </TableCell>
-                      <TableCell sx={{ py: 0.5, px: 1 }}>{container.is_default ? 'Yes' : 'No'}</TableCell>
-                      {/* <TableCell sx={{ py: 0.5, px: 1 }}>{Array.isArray(container.projects) ? container.projects.join(', ') : ''}</TableCell> */}
-                      <TableCell align="right" sx={{ py: 0.5, px: 1 }}>
-                        <IconButton sx={{ mx: 1 }} color="primary" size="small" onClick={() => handleEdit(container)}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton sx={{ mx: 1 }} color="error" size="small" onClick={() => handleDelete(container.id)}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                  : null}
-                <TableRow sx={{ height: 28 }}>
-                  <TableCell sx={{ py: 0.5, px: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', position: 'relative' }}>
-                      <TextField
-                        size="small"
-                        name="name"
-                        value={newContainer.name}
-                        onChange={e => {
-                          handleChange(e);
-                          if (nameError && e.target.value.trim() !== '') setNameError(false);
-                        }}
-                        placeholder="Name"
-                        error={nameError}
-                        inputProps={{ style: { fontSize: 13, padding: 4 }, placeholder: 'Name' }}
-                        sx={{
-                          '& .MuiInputBase-input::placeholder': {
-                            color: systemMode === 'dark' ? '#bbb' : '#888',
-                            opacity: 1,
-                          },
-                        }}
-                        helperText={nameError ? (
-                          <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
-                            <WarningAmberIcon sx={{ color: 'red', fontSize: 18, mr: 0.5 }} />
-                            <span style={{ color: 'red' }}>Name is required.</span>
-                          </Box>
-                        ) : ''}
-                        FormHelperTextProps={{ style: { color: 'red', marginLeft: 0 } }}
-                      />
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ py: 0.5, px: 1 }}>
-                    <TextField size="small" name="description" value={newContainer.description} onChange={handleChange} placeholder="Description"
-                      inputProps={{
-                        style: { fontSize: 13, padding: 4 },
-                        placeholder: 'Description'
-                      }}
-                      sx={{
-                        '& .MuiInputBase-input::placeholder': {
-                          color: systemMode === 'dark' ? '#bbb' : '#888',
-                          opacity: 1,
+    <Box sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Grid container spacing={1} sx={{ flexGrow: 1, flexWrap: 'nowrap' }}>
+        {/* Sidebar Menu */}
+        <Grid size={{ md: 3 }} sx={{ minWidth: 250, maxWidth: 300, mr: 2 }}>
+          <Paper elevation={1} sx={{ p: 2, height: '100%' }}>
+            <List component="nav">
+              {menuItems
+                .filter(item => item.show)
+                .map((item) => (
+                  <ListItemButton
+                    key={item.id}
+                    selected={selectedSection === item.id}
+                    onClick={() => setSelectedSection(item.id)}
+                    sx={{
+                      borderRadius: 1,
+                      mb: 1,
+                      '&.Mui-selected': {
+                        backgroundColor: 'secondary.light',
+                        color: 'white',
+                        '&:hover': {
+                          backgroundColor: 'secondary.light',
                         },
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell sx={{ py: 0.5, px: 1 }}>
-                    <TextField size="small" name="criticality" value={newContainer.criticality} onChange={handleChange} placeholder="Criticality"
-                      select
-                      inputProps={{
-                        style: { fontSize: 13, padding: 4 },
-                        placeholder: 'Criticality'
-                      }}
-                      sx={{
-                        '& .MuiInputBase-input::placeholder': {
-                          color: systemMode === 'dark' ? '#bbb' : '#888',
-                          opacity: 1,
+                        '& .MuiListItemIcon-root': {
+                          color: 'white',
                         },
-                      }}
-                    >
-                      <MenuItem value="none">None</MenuItem>
-                      <MenuItem value="info">Info</MenuItem>
-                      <MenuItem value="low">Low</MenuItem>
-                      <MenuItem value="medium">Medium</MenuItem>
-                      <MenuItem value="high">High</MenuItem>
-                      <MenuItem value="critical">Critical</MenuItem>
-                    </TextField>
-                  </TableCell>
-                  <TableCell sx={{ py: 0.5, px: 1 }}>
-                    <TextField size="small" name="owner" value={newContainer.owner || ''} onChange={handleChange} placeholder="Owner"
-                      inputProps={{ style: { fontSize: 13, padding: 4 }, placeholder: 'Owner', readOnly: true, tabIndex: -1 }}
-                      sx={{
-                        '& .MuiInputBase-input::placeholder': {
-                          color: systemMode === 'dark' ? '#bbb' : '#888',
-                          opacity: 1,
-                        },
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell sx={{ py: 0.5, px: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <input
-                        type="color"
-                        name="color"
-                        value={newContainer.color || '#98a192'}
-                        onChange={e => handleChange({ target: { name: 'color', value: e.target.value } })}
-                        style={{ width: 32, height: 32, border: 'none', background: 'none', padding: 0, marginRight: 8, cursor: 'pointer' }}
-                      />
-                      <Typography variant="body2" sx={{ minWidth: 60, fontSize: 13, color: systemMode === 'dark' ? '#bbb' : '#444' }}>
-                        {newContainer.color || '#98a192'}
-                      </Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ py: 0.5, px: 1 }}>
-                    <Checkbox checked={!!newContainer.is_default} name="is_default" onChange={e => setNewContainer(prev => ({ ...prev, is_default: e.target.checked, }))} size="small" sx={{ p: 0.5 }} />
-                  </TableCell>
-                  {/* <TableCell sx={{ py: 0.5, px: 1 }}>
-                    <TextField size="small" name="projects" value={Array.isArray(newContainer.projects) ? newContainer.projects.join(',') : ''} onChange={e => setNewContainer(prev => ({ ...prev, projects: e.target.value.split(',').map(s => s.trim()), }))} placeholder="Projects" inputProps={{ style: { fontSize: 13, padding: 4 } }} />
-                  </TableCell> */}
-                  <TableCell align="right" sx={{ py: 0.5, px: 1 }}>
-                    <IconButton color="success" size="small" onClick={() => {
-                      if (!newContainer.name || newContainer.name.trim() === '') {
-                        setNameError(true);
-                        return;
-                      }
-                      handleCreate();
-                    }}>
-                      <AddIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-            <DialogTitle>{editMode ? 'Edit Logic Container' : 'New Logic Container'}</DialogTitle>
-            <DialogContent>
-              <TextField
-                margin="dense"
-                label="Name"
-                name="name"
-                value={newContainer.name}
-                onChange={e => {
-                  handleChange(e);
-                  if (nameError && e.target.value.trim() !== '') setNameError(false);
-                }}
-                fullWidth
-                variant="outlined"
-                sx={{ mb: 2 }}
-                error={nameError}
-                helperText={nameError ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
-                    <WarningAmberIcon sx={{ color: 'red', fontSize: 18, mr: 0.5 }} />
-                    <span style={{ color: 'red' }}>Name is required.</span>
-                  </Box>
-                ) : ''}
-                FormHelperTextProps={{ style: { color: 'red', marginLeft: 0 } }}
-              />
-              <TextField
-                margin="dense"
-                label="Description"
-                name="description"
-                value={newContainer.description}
-                onChange={handleChange}
-                fullWidth
-                variant="outlined"
-                sx={{ mb: 2 }}
-              />
-              <TextField
-                margin="dense"
-                label="Criticality"
-                name="criticality"
-                value={newContainer.criticality}
-                onChange={handleChange}
-                select
-                fullWidth
-                variant="outlined"
-                sx={{ mb: 2 }}
-              >
-                <MenuItem value="none">None</MenuItem>
-                <MenuItem value="info">Info</MenuItem>
-                <MenuItem value="low">Low</MenuItem>
-                <MenuItem value="medium">Medium</MenuItem>
-                <MenuItem value="high">High</MenuItem>
-                <MenuItem value="critical">Critical</MenuItem>
-              </TextField>
-              <TextField
-                margin="dense"
-                label="Owner"
-                name="owner"
-                value={newContainer.owner || ''}
-                onChange={handleChange}
-                fullWidth
-                variant="outlined"
-                sx={{ mb: 2 }}
-                inputProps={{ readOnly: true, tabIndex: -1 }}
-              />
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
-                <label htmlFor="edit-color-picker" style={{ marginRight: 8 }}>Color:</label>
-                <input
-                  id="edit-color-picker"
-                  type="color"
-                  name="color"
-                  value={newContainer.color || '#98a192'}
-                  onChange={e => handleChange({ target: { name: 'color', value: e.target.value } })}
-                  style={{ width: 32, height: 32, border: 'none', background: 'none', padding: 0, marginRight: 8, cursor: 'pointer' }}
-                />
-                <Typography variant="body2" sx={{ minWidth: 60, fontSize: 13, color: systemMode === 'dark' ? '#bbb' : '#444' }}>
-                  {newContainer.color || '#98a192'}
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Checkbox
-                  checked={!!newContainer.is_default}
-                  name="is_default"
-                  onChange={e =>
-                    setNewContainer(prev => ({
-                      ...prev,
-                      is_default: e.target.checked,
-                    }))
-                  }
-                />
-                <Typography variant="body2">Is Default</Typography>
-              </Box>
-              <TextField
-                margin="dense"
-                label="Projects (comma separated)"
-                name="projects"
-                value={Array.isArray(newContainer.projects) ? newContainer.projects.join(',') : ''}
-                onChange={e =>
-                  setNewContainer(prev => ({
-                    ...prev,
-                    projects: e.target.value.split(',').map(s => s.trim()),
-                  }))
-                }
-                fullWidth
-                variant="outlined"
-                sx={{ mb: 2 }}
-              />
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={handleClose}>Cancel</Button>
+                      },
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 40 }}>
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText primary={item.label} />
+                  </ListItemButton>
+                ))}
+            </List>
+            <Divider sx={{ my: 2 }} />
+            <Box sx={{ px: 1 }}>
               <Button
-                onClick={() => {
-                  if (!newContainer.name || newContainer.name.trim() === '') {
-                    setNameError(true);
-                    return;
-                  }
-                  editMode ? handleUpdate() : handleCreate();
-                }}
-                variant="contained"
-                color="primary"
+                startIcon={<HelpOutlineIcon />}
+                onClick={() => setOpenHelpDialog(true)}
+                size="small"
+                variant="outlined"
+                fullWidth
+                sx={{ textTransform: 'none' }}
               >
-                {editMode ? 'Update' : 'Create'}
+                Help
               </Button>
-            </DialogActions>
-          </Dialog>
-        </Box>
-      )}
-
-      {showResourceLifecycleManagement && (
-        <span>
-          {/* <Divider sx={{ my: 3 }} /> */}
-
-          <Typography variant="h5" gutterBottom sx={{ mt: 10, mb: 3, mx: 2 }}>
-            CI/CD Resource Lifecycle
-          </Typography>
-
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2, mb: 2 }}>
-            <ResourceButtonGroup
-              resourceTypes={resourceTypes.filter(rt => !rt.disabled)}
-              resourceType={resource_type_selected}
-              handleResourceTypeChange={handleResourceTypeChange}
-            />
-          </Box>
-          {!selectedScan ? (
-            <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-              {console.log("No scan selected")}
-              <CircularProgress size={80} style={{ color: 'purple' }} />
             </Box>
-          ) : (
-            <>
-              <ResourceTable
-                filteredBadge={0}
-                selectedType={resource_type_selected}
-                filteredProtectedResources={filteredProtectedResources}
-                logicContainers={logic_containers}
-                projects={selectedScan.projects}
-                filterFocus={false}
-                onLogicContainerChange={fetchLogicContainers}
-              />
+          </Paper>
+        </Grid>
 
-            </>
-          )}
+        {/* Content Area */}
+        <Grid size={{ md: 9 }} sx={{ flexGrow: 1, overflow: 'auto' }}>
+            {renderContent()}
+        </Grid>
+      </Grid>
 
-        </span>
-      )}
-
+      {/* Help Dialog */}
       <Dialog open={openHelpDialog} onClose={() => setOpenHelpDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>About Logic Containers</DialogTitle>
         <DialogContent>
@@ -690,8 +885,6 @@ const Platform = ({ }) => {
           <Button onClick={() => setOpenHelpDialog(false)} color="primary">Close</Button>
         </DialogActions>
       </Dialog>
-
-
     </Box>
   );
 };

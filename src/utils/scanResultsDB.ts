@@ -9,7 +9,7 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 
 
 // Utility functions for scanresults IndexedDB operations
-// Usage: import { insertScanResult, updateScanResult, getScanResult, getAllScanResults, deleteScanResult } from './scanResultsDB';
+// Usage: import { insertScanResult, updateScanResult, getScanResult, getAllScanResults, deletePlatformSourceResult } from './scanResultsDB';
 
 import { OBSERVES_DB_NAME } from './dbConfig';
 
@@ -78,7 +78,7 @@ export async function getAllScanResults(): Promise<any[]> {
   });
 }
 
-export async function deleteScanResult(id: string): Promise<boolean> {
+export async function deletePlatformSourceResult(id: string): Promise<boolean> {
   const db = await ensureScanResultsStore();
   return new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_NAME], 'readwrite');

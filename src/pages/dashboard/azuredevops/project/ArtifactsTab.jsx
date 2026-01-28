@@ -26,9 +26,9 @@ import {
     Tooltip as MuiTooltip
 } from '@mui/material';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import resourceTypeStyle from '../../theme/resourceTypeStyle';
+import resourceTypeStyle from '../../../theme/resourceTypeStyle';
 import dayjs from 'dayjs';
-import useStore from '../../../state/stores/store';
+import useStore from '../../../../state/stores/store';
 
 
 const ArtifactsTab = ({ projectId, projectName }) => {
@@ -40,15 +40,15 @@ const ArtifactsTab = ({ projectId, projectName }) => {
     const [feedsPerPage, setFeedsPerPage] = useState(10);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
-    const { selectedScan, fetchArtifactsFeeds } = useStore();
+    const { selectedPlatformSource, fetchArtifactsFeeds } = useStore();
 
     useEffect(() => {
         async function fetchFeeds() {
             setLoading(true);
             setError(null);
             try {
-                if (selectedScan && selectedScan.id && projectId) {
-                    const result = await fetchArtifactsFeeds(selectedScan.id, projectId);
+                if (selectedPlatformSource && selectedPlatformSource.id && projectId) {
+                    const result = await fetchArtifactsFeeds(selectedPlatformSource.id, projectId);
                     let allFeeds = [];
                     if (Array.isArray(result)) {
                         allFeeds = result;
@@ -71,7 +71,7 @@ const ArtifactsTab = ({ projectId, projectName }) => {
             setLoading(false);
         }
         fetchFeeds();
-    }, [selectedScan, projectId, fetchArtifactsFeeds]);
+    }, [selectedPlatformSource, projectId, fetchArtifactsFeeds]);
 
     // Filtered feeds and local pagination
     const filteredFeeds = feedsSearch
@@ -247,9 +247,9 @@ const ArtifactsTab = ({ projectId, projectName }) => {
                                         feed?.k_project?.self_attribute ? (
                                             <a href={feed.k_project.self_attribute} target="_blank" rel="noopener noreferrer">View Feed</a>
                                         ) : (
-                                            selectedScan && feed.name ? (
+                                            selectedPlatformSource && feed.name ? (
                                                 <a
-                                                    href={`https://dev.azure.com/${selectedScan.id}/${projectName}/_artifacts/feed/${encodeURIComponent(feed.name)}`}
+                                                    href={`https://dev.azure.com/${selectedPlatformSource.id}/${projectName}/_artifacts/feed/${encodeURIComponent(feed.name)}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                 >View Feed</a>

@@ -20,7 +20,7 @@ import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
-import { ListSubheader, Tooltip, Chip, Typography, CircularProgress, TextField, Checkbox, FormControlLabel, Divider, Fab, Zoom, Switch, ClickAwayListener, Collapse, Paper } from '@mui/material';
+import { ListSubheader, Card, CardHeader, CardContent, Grid, Tooltip, Chip, Typography, CircularProgress, TextField, Checkbox, FormControlLabel, Divider, Fab, Zoom, Switch, ClickAwayListener, Collapse, Paper } from '@mui/material';
 import ResourceButtonGroup from '../components/ResourceButtonGroup';
 import useStore from '../../state/stores/store';
 import Dialog from '@mui/material/Dialog';
@@ -30,20 +30,27 @@ import SearchIcon from '@mui/icons-material/Search';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import CloseIcon from '@mui/icons-material/Close';
-import FilterListIcon from '@mui/icons-material/FilterList';
 import TuneIcon from '@mui/icons-material/Tune';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import PrintIcon from '@mui/icons-material/Print';
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import FilterAltOffIcon from "@mui/icons-material/FilterAltOff";
 import { resourceTypes } from '../../utils/resourceTypes';
 import { set } from 'react-hook-form';
 import DOMPurify from "dompurify";
 import { Delete, DeleteForever } from '@mui/icons-material';
 import DeleteForeverSharpIcon from '@mui/icons-material/DeleteForeverSharp';
+import { filter } from 'd3';
+import { filterContainersByPlatformSource } from '../../utils/logicContainerHelpers';
 
 const ResourceTracker = () => {
 
-    const { selectedScan, resource_type_selected, projects, selectedProject, logic_containers, getProtectedResourcesByOrgTypeAndIdsSummary, setResourceTypeSelected, setCurrentPage, fetchResources, fetchLogicContainers, fetchBuilds, fetchPipelines, savedSearches, fetchSavedSearches, createSavedSearch, deleteSavedSearch, updateSavedSearch } = useStore();
+    const { selectedPlatformSource, resource_type_selected, projects, selectedProject, logic_containers, getProtectedResourcesByOrgTypeAndIdsSummary, setResourceTypeSelected, setCurrentPage, fetchResources, fetchLogicContainers, fetchBuilds, fetchPipelines, savedSearches, fetchSavedSearches, createSavedSearch, deleteSavedSearch, updateSavedSearch } = useStore();
+
+    // Filter logic containers to only show those available in current platform source
+    const filteredLogicContainers = selectedPlatformSource
+        ? filterContainersByPlatformSource(logic_containers, selectedPlatformSource.id)
+        : logic_containers;
 
     // Local state for large resources
     const [endpoints, setEndpoints] = useState([]);
@@ -151,7 +158,6 @@ const ResourceTracker = () => {
             filterForPipelineType !== 'all',
             buildsFilter !== 'all'
         ].filter(Boolean).length;
-        // console.log('Active Pipeline Filters Count:', activeFiltersCount);
         setIsFilteredPipeline(activeFiltersCount);
     }, [searchTermPipelines, pipelinesUsingFilteredResources, resourcePermissions, pipelineAdvancedFilters, filterForAlertedPipelines, filterForJobAuthorizationScope, filterForPipelineType, filterForUnqueriablePipelines, filterForDisabledPipelines, filterForOverprivilegedPipelines, buildsFilter]);
 
@@ -165,48 +171,48 @@ const ResourceTracker = () => {
 
 
     useEffect(() => {
-        if (selectedScan) {
+        if (selectedPlatformSource) {
             // Await logic containers before proceeding
             Promise.resolve(fetchLogicContainers()).then(() => {
                 switch (resource_type_selected) {
                     case 'endpoint':
-                        fetchResources(selectedScan.id, 'endpoint').then(setEndpoints);
+                        fetchResources(selectedPlatformSource.id, 'endpoint').then(setEndpoints);
                         setVariableGroups([]);
                         setRepositories([]);
                         setPools([]);
                         setSecureFiles([]);
                         break;
                     case 'variablegroup':
-                        fetchResources(selectedScan.id, 'variablegroup').then(setVariableGroups);
+                        fetchResources(selectedPlatformSource.id, 'variablegroup').then(setVariableGroups);
                         setEndpoints([]);
                         setRepositories([]);
                         setPools([]);
                         setSecureFiles([]);
                         break;
                     case 'repository':
-                        fetchResources(selectedScan.id, 'repository').then(setRepositories);
+                        fetchResources(selectedPlatformSource.id, 'repository').then(setRepositories);
                         setEndpoints([]);
                         setVariableGroups([]);
                         setPools([]);
                         setSecureFiles([]);
                         break;
                     case 'pool_merged':
-                        fetchResources(selectedScan.id, 'pool_merged').then(setPools);
+                        fetchResources(selectedPlatformSource.id, 'pool_merged').then(setPools);
                         setEndpoints([]);
                         setVariableGroups([]);
                         setRepositories([]);
                         setSecureFiles([]);
                         break;
                     case 'securefile':
-                        fetchResources(selectedScan.id, 'securefile').then(setSecureFiles);
+                        fetchResources(selectedPlatformSource.id, 'securefile').then(setSecureFiles);
                         setEndpoints([]);
                         setVariableGroups([]);
                         setRepositories([]);
                         setPools([]);
                         break;
                     case 'environment':
-                        fetchResources(selectedScan.id, 'environment').then(setEnvironments);
-                        fetchResources(selectedScan.id, 'deploymentgroups').then(setDeploymentGroups);
+                        fetchResources(selectedPlatformSource.id, 'environment').then(setEnvironments);
+                        fetchResources(selectedPlatformSource.id, 'deploymentgroups').then(setDeploymentGroups);
                         setEndpoints([]);
                         setVariableGroups([]);
                         setRepositories([]);
@@ -222,15 +228,15 @@ const ResourceTracker = () => {
                         break;
 
                 }
-                fetchBuilds(selectedScan.id).then(setBuilds);
-                fetchPipelines(selectedScan.id).then(setPipelines);
+                fetchBuilds(selectedPlatformSource.id).then(setBuilds);
+                fetchPipelines(selectedPlatformSource.id).then(setPipelines);
             });
         } else {
-            // No scans available, redirect to home page
+            // No platformSources available, redirect to home page
             window.location.href = "/";
         }
 
-    }, [selectedScan, resource_type_selected, fetchLogicContainers, fetchResources, fetchBuilds, fetchPipelines]);
+    }, [selectedPlatformSource, resource_type_selected, fetchLogicContainers, fetchResources, fetchBuilds, fetchPipelines]);
 
     // Scroll detection for showing Fab filters when filtering UI is out of sight
     useEffect(() => {
@@ -266,7 +272,6 @@ const ResourceTracker = () => {
             setFilterForOversharedResources(false);
         }
         if (scope === 'pipeline' || !scope) {
-            // console.log('Resetting Pipeline Filters');
             setSearchTermPipelines('');
             setPipelinesUsingFilteredResources(false);
             setIsFilteredPipeline(0);
@@ -295,6 +300,7 @@ const ResourceTracker = () => {
 
     const handleResourceTypeChange = (type) => {
         setResourceTypeSelected(type);
+        handleFilterReset('resource');
     };
 
     const handleLogicContainerSelect = (event) => {
@@ -402,11 +408,9 @@ const ResourceTracker = () => {
             if (editingSearchId) {
                 // Update existing search
                 await updateSavedSearch(editingSearchId, searchData);
-                console.log('Search updated successfully!');
             } else {
                 // Create new search
                 await createSavedSearch(searchData);
-                console.log('Search saved successfully!');
             }
 
             // Reset dialog state and close
@@ -455,7 +459,6 @@ const ResourceTracker = () => {
         }
 
         setLoadDialogOpen(false);
-        console.log('Loaded saved search:', selectedSavedSearch);
         // setSelectedSavedSearch(null);
     };
 
@@ -608,10 +611,33 @@ const ResourceTracker = () => {
         }
 
         const lc = logic_containers.find(lc => lc.id === logic_container_filter_id);
+        if (!lc) {
+            return resources;
+        }
 
-        return resources.filter(resource =>
-            resource.id && lc.resources.includes(resource.id)
-        );
+        // Get current platform source ID
+        const platformSourceId = selectedPlatformSource?.id;
+        if (!platformSourceId) {
+            return resources;
+        }
+
+        // Get resources for this platform source from the container
+        let containerResourceIds = [];
+        if (lc.resources) {
+            // New format: resources scoped per platform source
+            if (typeof lc.resources === 'object' && !Array.isArray(lc.resources)) {
+                containerResourceIds = lc.resources[platformSourceId] || [];
+            }
+            // Old format: simple array of resource IDs (backwards compatibility)
+            else if (Array.isArray(lc.resources)) {
+                containerResourceIds = lc.resources;
+            }
+        }
+
+        return resources.filter(resource => {
+            const resourceIdStr = String(resource.id);
+            return containerResourceIds.map(String).includes(resourceIdStr);
+        });
     }
 
     function filterPipelinesUsingFilteredResources(filteredPipelines, filteredProtectedResources) {
@@ -749,11 +775,22 @@ const ResourceTracker = () => {
 
     // get all the containers associated with this resource and if they exist in the nodes, connect them
     function getLogicContainersForResource(resourceId) {
-        return logic_containers
-            .filter(container =>
-                Array.isArray(container.resources) &&
-                container.resources.map(String).includes(String(resourceId))
-            )
+        const platformSourceId = selectedPlatformSource?.id;
+        
+        return logic_containers.filter(container => {
+            // New format: resources scoped per platform source
+            if (container.resources && typeof container.resources === 'object' && !Array.isArray(container.resources)) {
+                if (platformSourceId && container.resources[platformSourceId]) {
+                    return container.resources[platformSourceId].map(String).includes(String(resourceId));
+                }
+                return false;
+            }
+            // Old format: simple array (backwards compatibility)
+            if (Array.isArray(container.resources)) {
+                return container.resources.map(String).includes(String(resourceId));
+            }
+            return false;
+        });
     }
 
     if (filterForOverprivilegedResources) {
@@ -841,8 +878,6 @@ const ResourceTracker = () => {
     if (filterForPipelineType) {
         if (filterForPipelineType !== "all") {
             filteredPipelines = Object.values(filteredPipelines).filter(pipeline => {
-                // console.log(pipeline);
-                // console.log(filterForPipelineType);
                 if (!pipeline.process?.type || pipeline.process.type != filterForPipelineType) {
                     return false;
                 }
@@ -855,6 +890,7 @@ const ResourceTracker = () => {
         if (!filters || filters.length === 0) return pipelines;
 
         // Group filters by their scope
+        const resourceRepoFilters = filters.filter(f => f.field === 'repositoryName' || f.field === 'repositoryRef');
         const triggerFilters = filters.filter(f => f.field === 'trigger');
         const stageFilters = filters.filter(f => f.field === 'stageName' || f.field === 'stagePool');
         const jobFilters = filters.filter(f => f.field === 'jobName' || f.field === 'jobPool');
@@ -880,6 +916,81 @@ const ResourceTracker = () => {
                         return true;
                     }
                     return false;
+                }
+
+                // Resource Repository filters
+                if (resourceRepoFilters.length > 0) {
+                    // Group name and ref filters separately
+                    const nameFilters = resourceRepoFilters.filter(f => f.field === 'repositoryName');
+                    const refFilters = resourceRepoFilters.filter(f => f.field === 'repositoryRef');
+
+                    const resources = yaml_recipe?.resources?.repositories || [];
+
+                    // If we have paired filters (name and ref), check them together
+                    if (nameFilters.length > 0 && refFilters.length > 0) {
+                        // Each name filter should pair with corresponding ref filter by index
+                        const maxPairs = Math.max(nameFilters.length, refFilters.length);
+
+                        const allPairsMatch = Array.from({ length: maxPairs }).every((_, pairIndex) => {
+                            const nameFilter = nameFilters[pairIndex];
+                            const refFilter = refFilters[pairIndex];
+
+                            // Find if any resource matches this pair
+                            const someResourceMatches = resources.some(repo => {
+                                let nameMatches = true;
+                                let refMatches = true;
+
+                                if (nameFilter) {
+                                    nameMatches = repo.name?.toLowerCase().includes(nameFilter.value.toLowerCase());
+                                    if (nameFilter.negate) nameMatches = !nameMatches;
+                                }
+
+                                if (refFilter) {
+                                    refMatches = repo.ref?.toLowerCase().includes(refFilter.value.toLowerCase());
+                                    if (refFilter.negate) refMatches = !refMatches;
+                                }
+
+                                // Both must match in the SAME repository
+                                return nameMatches && refMatches;
+                            });
+
+                            return someResourceMatches;
+                        });
+
+                        if (!allPairsMatch) return false;
+                    }
+                    // If only name filters
+                    else if (nameFilters.length > 0) {
+                        const nameFiltersResult = nameFilters.every(filter => {
+                            if (filter.negate) {
+                                return resources.every(repo => {
+                                    const matches = repo.name?.toLowerCase().includes(filter.value.toLowerCase());
+                                    return !matches;
+                                });
+                            } else {
+                                return resources.some(repo =>
+                                    repo.name?.toLowerCase().includes(filter.value.toLowerCase())
+                                );
+                            }
+                        });
+                        if (!nameFiltersResult) return false;
+                    }
+                    // If only ref filters
+                    else if (refFilters.length > 0) {
+                        const refFiltersResult = refFilters.every(filter => {
+                            if (filter.negate) {
+                                return resources.every(repo => {
+                                    const matches = repo.ref?.toLowerCase().includes(filter.value.toLowerCase());
+                                    return !matches;
+                                });
+                            } else {
+                                return resources.some(repo =>
+                                    repo.ref?.toLowerCase().includes(filter.value.toLowerCase())
+                                );
+                            }
+                        });
+                        if (!refFiltersResult) return false;
+                    }
                 }
 
                 // Trigger filters - there is only one trigger, so easy logic
@@ -1061,6 +1172,7 @@ const ResourceTracker = () => {
 
 
         // Group filters by their scope
+        const resourceRepoFilters = filters.filter(f => f.field === 'repositoryName' || f.field === 'repositoryRef');
         const triggerFilters = filters.filter(f => f.field === 'trigger');
         const stageFilters = filters.filter(f => f.field === 'stageName' || f.field === 'stagePool');
         const jobFilters = filters.filter(f => f.field === 'jobName' || f.field === 'jobPool');
@@ -1070,6 +1182,82 @@ const ResourceTracker = () => {
             let yaml_recipe = {};
             if (build && build.pipeline_recipe) {
                 yaml_recipe = build.pipeline_recipe;
+            }
+
+            // Resource Repository filters
+            // Resource Repository filters
+            if (resourceRepoFilters.length > 0) {
+                // Group name and ref filters separately
+                const nameFilters = resourceRepoFilters.filter(f => f.field === 'repositoryName');
+                const refFilters = resourceRepoFilters.filter(f => f.field === 'repositoryRef');
+
+                const resources = yaml_recipe?.resources?.repositories || [];
+
+                // If we have paired filters (name and ref), check them together
+                if (nameFilters.length > 0 && refFilters.length > 0) {
+                    // Each name filter should pair with corresponding ref filter by index
+                    const maxPairs = Math.max(nameFilters.length, refFilters.length);
+
+                    const allPairsMatch = Array.from({ length: maxPairs }).every((_, pairIndex) => {
+                        const nameFilter = nameFilters[pairIndex];
+                        const refFilter = refFilters[pairIndex];
+
+                        // Find if any resource matches this pair
+                        const someResourceMatches = resources.some(repo => {
+                            let nameMatches = true;
+                            let refMatches = true;
+
+                            if (nameFilter) {
+                                nameMatches = repo.name?.toLowerCase().includes(nameFilter.value.toLowerCase());
+                                if (nameFilter.negate) nameMatches = !nameMatches;
+                            }
+
+                            if (refFilter) {
+                                refMatches = repo.ref?.toLowerCase().includes(refFilter.value.toLowerCase());
+                                if (refFilter.negate) refMatches = !refMatches;
+                            }
+
+                            // Both must match in the SAME repository
+                            return nameMatches && refMatches;
+                        });
+
+                        return someResourceMatches;
+                    });
+
+                    if (!allPairsMatch) return false;
+                }
+                // If only name filters
+                else if (nameFilters.length > 0) {
+                    const nameFiltersResult = nameFilters.every(filter => {
+                        if (filter.negate) {
+                            return resources.every(repo => {
+                                const matches = repo.name?.toLowerCase().includes(filter.value.toLowerCase());
+                                return !matches;
+                            });
+                        } else {
+                            return resources.some(repo =>
+                                repo.name?.toLowerCase().includes(filter.value.toLowerCase())
+                            );
+                        }
+                    });
+                    if (!nameFiltersResult) return false;
+                }
+                // If only ref filters
+                else if (refFilters.length > 0) {
+                    const refFiltersResult = refFilters.every(filter => {
+                        if (filter.negate) {
+                            return resources.every(repo => {
+                                const matches = repo.ref?.toLowerCase().includes(filter.value.toLowerCase());
+                                return !matches;
+                            });
+                        } else {
+                            return resources.some(repo =>
+                                repo.ref?.toLowerCase().includes(filter.value.toLowerCase())
+                            );
+                        }
+                    });
+                    if (!refFiltersResult) return false;
+                }
             }
 
             // Trigger filters
@@ -1200,9 +1388,8 @@ const ResourceTracker = () => {
 
     return (
         <Box sx={{ p: 3 }}>
-            {!selectedScan ? (
+            {!selectedPlatformSource ? (
                 <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-                    {console.log("No scan selected")}
                     <CircularProgress size={80} style={{ color: 'purple' }} />
                 </Box>
             ) : (
@@ -1220,20 +1407,20 @@ const ResourceTracker = () => {
                         </Box>
                         {/* <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2, mb: 2 }}>
                             <ButtonGroup>
-                                <Button
-                                    variant={filterFocus === 'resource' ? 'contained' : 'outlined'}
-                                    onClick={() => handleFilterFocusChange('resource')}
-                                >
-                                    Resource Focused
+                            <Button
+                            variant={filterFocus === 'resource' ? 'contained' : 'outlined'}
+                            onClick={() => handleFilterFocusChange('resource')}
+                            >
+                            Resource Focused
                                 </Button>
                                 <Button
                                     variant={filterFocus === 'pipeline' ? 'contained' : 'outlined'}
                                     onClick={() => handleFilterFocusChange('pipeline')}
-                                >
+                                    >
                                     Pipeline Focused
-                                </Button>
-                            </ButtonGroup>
-                        </Box> */}
+                                    </Button>
+                                    </ButtonGroup>
+                                    </Box> */}
                     </Stack>
 
                     <Box sx={{
@@ -1242,7 +1429,7 @@ const ResourceTracker = () => {
                         position: 'relative',
                     }}>
                         <IconButton
-                            aria-label="Print D3 Graph as PNG"
+                            aria-label="toggle filtering ui"
                             onClick={() => {
                                 setFilteringUICollapsed(!filteringUICollapsed);
                                 // Close any open FAB panels when toggling main UI
@@ -1254,9 +1441,10 @@ const ResourceTracker = () => {
                             sx={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}
                             size="small"
                         >
-                            <FilterListIcon fontSize="small" />
+                            <TuneIcon fontSize="small" />
                         </IconButton>
                     </Box>
+
 
                     <Box sx={{ display: 'flex', flexDirection: 'row', gap: 2, width: '100%', mx: 'auto', height: '70vh', minHeight: '30vh', maxHeight: '80vh', overflow: 'hidden' }}>
 
@@ -1264,423 +1452,539 @@ const ResourceTracker = () => {
                         <Box
                             sx={{
                                 flexShrink: 0,
-                                width: filteringUICollapsed ? 48 : "auto", // ✅ numeric target values
-                                // transition: 'width 0.3s ease-in-out',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'stretch',
+                                width: filteringUICollapsed ? 52 : "auto",
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "stretch",
                                 gap: 2,
-                                overflowY: 'auto',
-                                maxHeight: '100%',
-                                textAlign: 'center',
-                                maxWidth: '60%',
+                                overflowY: "auto",
+                                maxHeight: "100%",
+                                maxWidth: "60%",
+                                direction: "rtl",
+                                "& *": {
+                                    direction: "ltr",
+                                },
                             }}
                         >
-
                             <Collapse in={!filteringUICollapsed} timeout={300}>
-                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                    <Typography variant="h5" color="#e25762" gutterBottom sx={{ fontSize: '1rem', mb: 0 }}>
-                                        Resource Filters
-                                    </Typography>
-                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, backgroundColor: 'rgba(226,87,98,0.07)', padding: 2, borderRadius: 1 }}>
+                                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                    {/* ===================== Resource Filters ===================== */}
+                                    <Card
+                                        variant="outlined"
+                                        sx={{
+                                            borderRadius: 1,
+                                            borderColor: "#ee4266",
+                                            overflow: "hidden",
+                                            marginLeft:4
+                                        }}
+                                    >
+                                        <CardHeader
+                                            title={
+                                                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                                                    Resource filters
+                                                </Typography>
+                                            }
+                                            action={
+                                                <Stack direction="row" spacing={1} alignItems="center">
+                                                    <Tooltip
+                                                        title={
+                                                            <Box sx={{ p: 0.5 }}>
+                                                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                                                    <Chip label="Overprivileged" size="small" sx={{ mr: 1 }} />
+                                                                    Resource is included in more than one logic container.
+                                                                </Typography>
+                                                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                                                    <Chip label="Overshared" size="small" sx={{ mr: 1 }} />
+                                                                    Resource is open to all pipelines or permissioned to more than one pipeline.
+                                                                </Typography>
+                                                                <Typography variant="body2">
+                                                                    <Chip label="Cross Project" size="small" sx={{ mr: 1 }} />
+                                                                    Resource is accessible across multiple projects.
+                                                                </Typography>
+                                                            </Box>
+                                                        }
+                                                        placement="left"
+                                                    >
+                                                        <IconButton size="small">
+                                                            <HelpOutlineIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
 
-                                        <Box sx={{
-                                            display: 'flex',
-                                            flexWrap: 'wrap',
-                                            flexDirection: 'row',
-                                            gap: 2,
-                                            justifyContent: 'center',
-                                            alignItems: 'center',
-                                            width: '100%',
-                                            minWidth: 0,
-                                        }}>
-                                            <TextField
-                                                variant="standard"
-                                                sx={{ mx: 2, maxWidth: 200 }}
-                                                label="Search by Name/ID"
-                                                value={searchTerm}
-                                                onChange={(e) => setSearchTerm(e.target.value)}
-                                            />
-                                            <FormControl variant="outlined" sx={{ minWidth: 150 }}>
-                                                <InputLabel id="logic-container-filter-label">Logic Container</InputLabel>
-                                                <Select
-                                                    labelId="logic-container-filter-label"
-                                                    value={logic_container_filter}
-                                                    onChange={handleLogicContainerSelect}
-                                                    label="Logic Container"
-                                                >
-                                                    <MenuItem value="all">
-                                                        <em>All</em>
-                                                    </MenuItem>
-                                                    {Object.keys(logic_containers).map((key) => (
-                                                        <MenuItem key={logic_containers[key].id} value={logic_containers[key].id}>
-                                                            {logic_containers[key].name}
-                                                        </MenuItem>
-                                                    ))}
-                                                </Select>
-                                            </FormControl>
+                                                    <Button
+                                                        size="small"
+                                                        startIcon={<RestartAltIcon />}
+                                                        onClick={() => handleFilterReset("resource")}
+                                                        variant="text"
+                                                    >
+                                                        Reset
+                                                    </Button>
+                                                </Stack>
+                                            }
+                                            sx={{
+                                                py: 1,
+                                                color: '#ee4266',
+                                                "& .MuiCardHeader-content": { overflow: "hidden" },
+                                            }}
+                                        />
 
-                                            <FormControl variant="outlined" sx={{ minWidth: 150 }}>
-                                                <InputLabel id="compliance-state-label">Resource Protection</InputLabel>
-                                                <Select
-                                                    labelId="compliance-state-label"
-                                                    value={protectedState}
-                                                    onChange={handleResourcesByProtectedStateChange}
-                                                    label="Resource Protection"
-                                                >
-                                                    <MenuItem value="all">
-                                                        <em>All</em>
-                                                    </MenuItem>
-                                                    <MenuItem value="protected">Protected</MenuItem>
-                                                    <MenuItem value="unprotected">Unprotected</MenuItem>
-                                                </Select>
-                                            </FormControl>
-                                            {resource_type_selected === 'pool_merged' && (
-                                                <>
-                                                    <FormControl variant="outlined" sx={{ minWidth: 150 }}>
-                                                        <InputLabel id="pool-type-label">Pool Type</InputLabel>
+                                        <CardContent sx={{ pt: 2 }}>
+                                            {/* Group: Search & scope */}
+                                            <Typography variant="overline" sx={{ color: "text.secondary" }}>
+                                                Search & scope
+                                            </Typography>
+
+                                            <Grid container spacing={2} sx={{ mt: 0.5, flexWrap: 'nowrap' }}>
+                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                    <TextField
+                                                        fullWidth
+                                                        size="small"
+                                                        variant="outlined"
+                                                        label="Search name / ID"
+                                                        value={searchTerm}
+                                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                                        sx={{ width: '100%' }}
+                                                    />
+                                                </Grid>
+
+                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                    <FormControl fullWidth size="small" sx={{ width: '100%' }}>
+                                                        <InputLabel id="logic-container-filter-label">
+                                                            Logic container
+                                                        </InputLabel>
                                                         <Select
-                                                            labelId="pool-type-label"
-                                                            value={poolType}
-                                                            onChange={(e) => setPoolType(e.target.value)}
-                                                            label="Pool Type"
+                                                            labelId="logic-container-filter-label"
+                                                            value={logic_container_filter}
+                                                            onChange={handleLogicContainerSelect}
+                                                            label="Logic container"
                                                         >
                                                             <MenuItem value="all">
                                                                 <em>All</em>
                                                             </MenuItem>
-                                                            <MenuItem value="ms-hosted">Microsoft Hosted</MenuItem>
-                                                            <MenuItem value="self-hosted">Self-Hosted</MenuItem>
+                                                            {filteredLogicContainers.map((container) => (
+                                                                <MenuItem
+                                                                    key={container.id}
+                                                                    value={container.id}
+                                                                >
+                                                                    {container.name}
+                                                                </MenuItem>
+                                                            ))}
                                                         </Select>
                                                     </FormControl>
-                                                    {/* <FormControlLabel
-                                                control={
-                                                    <Checkbox
-                                                        checked={singleUsePools} // Replace with appropriate state for exclusive queues
-                                                        onChange={(e) => setSingleUsePools(e.target.checked)} // Replace with appropriate handler
-                                                    />
-                                                }
-                                                label="Show pools with exclusive use (single use)"
-                                            /> */}
-                                                </>
-                                            )}
-                                        </Box>
+                                                </Grid>
 
-                                        <Box sx={{
-                                            display: 'flex',
-                                            flexWrap: 'wrap',
-                                            flexDirection: 'row',
-                                            gap: 2,
-                                            justifyContent: 'center',
-                                            alignItems: 'center',
-                                            width: '100%',
-                                            minWidth: 0,
-                                        }}>
-                                            <FormControlLabel
-                                                control={
-                                                    <Checkbox
-                                                        checked={filterForOverprivilegedResources}
-                                                        onChange={(e) => setFilterForOverprivilegedResources(e.target.checked)}
-                                                    />
-                                                }
-                                                label="Overprivileged"
-                                            />
-
-                                            <FormControlLabel
-                                                control={
-                                                    <Checkbox
-                                                        checked={filterForOversharedResources}
-                                                        onChange={(e) => setFilterForOversharedResources(e.target.checked)}
-                                                    />
-                                                }
-                                                label="Overshared"
-                                            />
-                                            <FormControlLabel
-                                                sx={{ justifyContent: 'center', }}
-                                                control={
-                                                    <Checkbox
-                                                        checked={crossProject}
-                                                        onChange={(e) => setCrossProject(e.target.checked)}
-                                                    />
-                                                }
-                                                label="Cross Project"
-                                            />
-
-                                            {/* Tooltip explaining resource filters */}
-                                            <Tooltip
-                                                title={
-                                                    <Box>
-                                                        <Typography variant="body2" sx={{ mb: 1 }}>
-                                                            <Chip label="Overprivileged" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is included in more than one logic container (shared across multiple containers)
-                                                        </Typography>
-                                                        <Typography variant="body2" sx={{ mb: 1 }}>
-                                                            <Chip label="Overshared" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is open to all pipelines or permissioned to more than one pipeline
-                                                        </Typography>
-                                                        <Typography variant="body2">
-                                                            <Chip label="Cross Project" sx={{ mr: 1, bgcolor: "#f3a8aeff", color: "#fff" }} size="small" />: Resource is accessible across multiple projects
-                                                        </Typography>
-                                                    </Box>
-                                                }
-                                                placement="right"
-                                            >
-                                                <HelpOutlineIcon color="action" sx={{ fontSize: 24, cursor: 'pointer', ml: 2 }} />
-                                            </Tooltip>
-                                        </Box>
-
-                                        <Box
-                                            component="span"
-                                            onClick={() => handleFilterReset('resource')}
-                                            sx={{
-                                                alignSelf: 'flex-end',
-                                                cursor: 'pointer',
-                                                color: '#1a0dab',
-                                                textDecoration: 'none',
-                                                '&:hover': {
-                                                    textDecoration: 'underline',
-                                                },
-                                            }}
-                                        >
-                                            Reset Resource Filters
-                                        </Box>
-                                    </Box>
-
-                                    <Divider sx={{ mt: 4, mb: 2 }}></Divider>
-
-                                    <Typography variant="h5" color="#5669b3" gutterBottom sx={{ fontSize: '1rem' }}>
-                                        Pipeline Filters
-                                    </Typography>
-
-
-                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, backgroundColor: 'rgba(86,105,179,0.07)', padding: 2, borderRadius: 1 }}>
-                                        <Box sx={{
-                                            display: 'flex',
-                                            flexWrap: 'wrap',
-                                            flexDirection: 'row',
-                                            gap: 2,
-                                            justifyContent: 'center',
-                                            alignItems: 'center',
-                                            width: '100%',
-                                            minWidth: 0,
-                                        }}>
-                                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                                <TextField
-                                                    variant="standard"
-                                                    sx={{ mx: 2, maxWidth: 200 }}
-                                                    label="Search by Name/ID"
-                                                    value={searchTermPipelines}
-                                                    onChange={(e) => setSearchTermPipelines(e.target.value)}
-                                                />
-                                            </Box>
-                                            <FormControl variant="outlined" sx={{ minWidth: 200 }}>
-                                                <InputLabel id="authz-label">Authorization Scope</InputLabel>
-                                                <Select
-                                                    labelId="authz-label"
-                                                    value={filterForJobAuthorizationScope}
-                                                    onChange={handlePipelineAuthZScopeChange}
-                                                    label="Authorization Scope"
-                                                >
-                                                    <MenuItem value="all">
-                                                        <em>All</em>
-                                                    </MenuItem>
-                                                    <MenuItem value="projectCollection">Organisation</MenuItem>
-                                                    <MenuItem value="project">Project</MenuItem>
-                                                </Select>
-                                            </FormControl>
-                                            <FormControl variant="outlined" sx={{ minWidth: 200 }}>
-                                                <InputLabel id="type-label">Pipeline Type</InputLabel>
-                                                <Select
-                                                    labelId="type-label"
-                                                    value={filterForPipelineType}
-                                                    onChange={handlePipelineTypeChange}
-                                                    label="Pipeline Type"
-                                                >
-                                                    <MenuItem value="all">
-                                                        <em>All</em>
-                                                    </MenuItem>
-                                                    <MenuItem value="1">Classic</MenuItem>
-                                                    <MenuItem value="2">YAML</MenuItem>
-                                                </Select>
-                                            </FormControl>
-                                        </Box>
-
-                                        <Box sx={{
-                                            display: 'flex',
-                                            flexWrap: 'wrap',
-                                            flexDirection: 'row',
-                                            gap: 2,
-                                            justifyContent: 'center',
-                                            alignItems: 'center',
-                                            width: '100%',
-                                            minWidth: 0,
-                                        }}>
-                                            <FormControlLabel
-                                                control={
-                                                    <Checkbox
-                                                        checked={pipelinesUsingFilteredResources}
-                                                        onChange={(e) => setPipelinesUsingFilteredResources(e.target.checked)}
-                                                    />
-                                                }
-                                                label="Permissioned"
-                                            />
-                                            <FormControlLabel
-                                                control={
-                                                    <Checkbox
-                                                        checked={filterForOverprivilegedPipelines}
-                                                        onChange={(e) => setFilterForOverprivilegedPipelines(e.target.checked)}
-                                                    />
-                                                }
-                                                label="Overprivileged"
-                                            />
-                                            <FormControlLabel
-                                                control={
-                                                    <Checkbox
-                                                        checked={filterForAlertedPipelines}
-                                                        onChange={e => setFilterForAlertedPipelines(e.target.checked)}
-                                                    />
-                                                }
-                                                label="Alerts"
-                                            />
-                                            <FormControlLabel
-                                                control={
-                                                    <Checkbox
-                                                        checked={filterForDisabledPipelines}
-                                                        onChange={(e) => setFilterForDisabledPipelines(e.target.checked)}
-                                                    />
-                                                }
-                                                label="Disabled"
-                                            />
-                                            <FormControlLabel
-                                                control={
-                                                    <Checkbox
-                                                        checked={filterForUnqueriablePipelines}
-                                                        onChange={(e) => setFilterForUnqueriablePipelines(e.target.checked)}
-                                                    />
-                                                }
-                                                label="YAML Error"
-                                            />
-                                            <Tooltip
-                                                title={
-                                                    <Box>
-                                                        <Typography variant="body2" sx={{ mb: 1 }}>
-                                                            <Chip label="Permissioned" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Shows pipelines that have permissions to the currently filtered resources
-                                                        </Typography>
-                                                        <Typography variant="body2" sx={{ mb: 1 }}>
-                                                            <Chip label="Overprivileged" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with access to resources included in more than one logic container
-                                                        </Typography>
-                                                        <Typography variant="body2" sx={{ mb: 1 }}>
-                                                            <Chip label="Alerts" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with builds or previews containing security alerts
-                                                        </Typography>
-                                                        <Typography variant="body2" sx={{ mb: 1 }}>
-                                                            <Chip label="Disabled" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines that are currently disabled (cannot be queued)
-                                                        </Typography>
-                                                        <Typography variant="body2">
-                                                            <Chip label="YAML Error" size="small" sx={{ mr: 1, bgcolor: "#b7c4f7ff", color: "#fff" }} />: Pipelines with YAML errors in preview builds (unqueriable)
-                                                        </Typography>
-                                                    </Box>
-                                                }
-                                                placement="right"
-                                            >
-                                                <HelpOutlineIcon color="action" sx={{ fontSize: 24, cursor: 'pointer', ml: 2 }} />
-                                            </Tooltip>
-                                        </Box>
-
-                                        <Divider sx={{ mt: 2, mb: 2 }} />
-
-                                        <Box sx={{ display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                                            {pipelineAdvancedFilters.map((filter, idx) => (
-                                                <Box key={idx} sx={{ display: 'flex', flexDirection: 'row', gap: 1, alignItems: 'center', mb: 1, width: '100%', overflowX: 'auto' }}>
-                                                    <FormControl variant="outlined" sx={{ minWidth: 150, flex: 1 }}>
+                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                    <FormControl fullWidth size="small" sx={{ width: '100%' }}>
+                                                        <InputLabel id="compliance-state-label">
+                                                            Resource protection
+                                                        </InputLabel>
                                                         <Select
-                                                            value={filter.field}
-                                                            onChange={e => handleAdvancedFilterChange(idx, 'field', e.target.value)}
-                                                            size="small"
-                                                            MenuProps={{
-                                                                PaperProps: {
-                                                                    style: {
-                                                                        maxHeight: 300,
-                                                                    },
-                                                                },
-                                                            }}
+                                                            labelId="compliance-state-label"
+                                                            value={protectedState}
+                                                            onChange={handleResourcesByProtectedStateChange}
+                                                            label="Resource protection"
                                                         >
-                                                            {/* Trigger Group */}
-                                                            <ListSubheader style={{ color: '#1976d2' }}>Trigger</ListSubheader>
-                                                            <MenuItem value="trigger" sx={{ backgroundColor: '#e3f2fd', borderRadius: 0 }}>Trigger</MenuItem>
-
-                                                            {/* Stage Group */}
-                                                            <ListSubheader style={{ color: '#388e3c' }}>Stage</ListSubheader>
-                                                            <MenuItem value="stageName" sx={{ backgroundColor: '#e8f5e9', borderRadius: 0 }}>Stage Name</MenuItem>
-                                                            <MenuItem value="stagePool" sx={{ backgroundColor: '#e8f5e9', borderRadius: 0 }}>Stage Pool</MenuItem>
-
-                                                            {/* Job Group */}
-                                                            <ListSubheader style={{ color: '#f57c00' }}>Job</ListSubheader>
-                                                            <MenuItem value="jobName" sx={{ backgroundColor: '#fff3e0', borderRadius: 0 }}>Job Name</MenuItem>
-                                                            <MenuItem value="jobPool" sx={{ backgroundColor: '#fff3e0', borderRadius: 0 }}>Job Pool</MenuItem>
-
-                                                            {/* Step Group */}
-                                                            <ListSubheader style={{ color: '#6a1b9a' }}>Step</ListSubheader>
-                                                            <MenuItem value="stepType" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Type</MenuItem>
-                                                            <MenuItem value="stepName" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Name</MenuItem>
-                                                            <MenuItem value="stepDisplayName" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Display Name</MenuItem>
-                                                            <MenuItem value="stepEnabled" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Enabled</MenuItem>
-                                                            <MenuItem value="stepInputs" sx={{ backgroundColor: '#f3e5f5', borderRadius: 0 }}>Step Inputs</MenuItem>
+                                                            <MenuItem value="all">
+                                                                <em>All</em>
+                                                            </MenuItem>
+                                                            <MenuItem value="protected">Protected</MenuItem>
+                                                            <MenuItem value="unprotected">Unprotected</MenuItem>
                                                         </Select>
                                                     </FormControl>
-                                                    <FormControl variant="outlined" sx={{ minWidth: 100, flex: 1 }}>
-                                                        {/* <Select
-                                                    value={filter.operator}
-                                                    onChange={e => handleAdvancedFilterChange(idx, 'operator', e.target.value)}
-                                                    size="small"
-                                                >
-                                                    <MenuItem disabled value="equals">Equals</MenuItem>
-                                                    <MenuItem value="contains">Contains</MenuItem>
-                                                </Select> */}
-                                                        <Typography variant="body2" sx={{ color: 'grey.600', alignSelf: 'center', minWidth: 100, textAlign: 'center' }}>
-                                                            contains
-                                                        </Typography>
-                                                    </FormControl>
+                                                </Grid>
+
+                                                {resource_type_selected === "pool_merged" && (
+                                                    <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                        <FormControl fullWidth size="small" sx={{ width: '100%' }}>
+                                                            <InputLabel id="pool-type-label">Pool type</InputLabel>
+                                                            <Select
+                                                                labelId="pool-type-label"
+                                                                value={poolType}
+                                                                onChange={(e) => setPoolType(e.target.value)}
+                                                                label="Pool type"
+                                                            >
+                                                                <MenuItem value="all">
+                                                                    <em>All</em>
+                                                                </MenuItem>
+                                                                <MenuItem value="ms-hosted">Microsoft Hosted</MenuItem>
+                                                                <MenuItem value="self-hosted">Self-Hosted</MenuItem>
+                                                            </Select>
+                                                        </FormControl>
+                                                    </Grid>
+                                                )}
+                                            </Grid>
+
+                                            <Divider sx={{ my: 2 }} />
+
+                                            {/* Group: Flags */}
+                                            <Typography variant="overline" sx={{ color: "text.secondary" }}>
+                                                Flags
+                                            </Typography>
+
+                                            <Stack
+                                                direction="row"
+                                                flexWrap="wrap"
+                                                gap={1.5}
+                                                sx={{ mt: 1 }}
+                                                alignItems="center"
+                                            >
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={filterForOverprivilegedResources}
+                                                            onChange={(e) =>
+                                                                setFilterForOverprivilegedResources(e.target.checked)
+                                                            }
+                                                        />
+                                                    }
+                                                    label="Overprivileged"
+                                                />
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={filterForOversharedResources}
+                                                            onChange={(e) =>
+                                                                setFilterForOversharedResources(e.target.checked)
+                                                            }
+                                                        />
+                                                    }
+                                                    label="Overshared"
+                                                />
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={crossProject}
+                                                            onChange={(e) => setCrossProject(e.target.checked)}
+                                                        />
+                                                    }
+                                                    label="Cross project"
+                                                />
+                                            </Stack>
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* ===================== Pipeline Filters ===================== */}
+                                    <Card variant="outlined" sx={{ borderRadius: 1, overflow: "hidden", borderColor: "#3C4EC3", marginLeft: 4 }}>
+                                        <CardHeader
+                                            title={
+                                                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                                                    Pipeline filters
+                                                </Typography>
+                                            }
+                                            action={
+                                                <Stack direction="row" spacing={1} alignItems="center">
+                                                    <Tooltip
+                                                        title={
+                                                            <Box sx={{ p: 0.5 }}>
+                                                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                                                    <Chip label="Permissioned" size="small" sx={{ mr: 1 }} />
+                                                                    Pipelines that have permissions to the currently filtered
+                                                                    resources.
+                                                                </Typography>
+                                                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                                                    <Chip label="Overprivileged" size="small" sx={{ mr: 1 }} />
+                                                                    Access to resources included in more than one logic
+                                                                    container.
+                                                                </Typography>
+                                                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                                                    <Chip label="Alerts" size="small" sx={{ mr: 1 }} />
+                                                                    Builds/previews containing security alerts.
+                                                                </Typography>
+                                                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                                                    <Chip label="Disabled" size="small" sx={{ mr: 1 }} />
+                                                                    Pipelines that are currently disabled.
+                                                                </Typography>
+                                                                <Typography variant="body2">
+                                                                    <Chip label="YAML Error" size="small" sx={{ mr: 1 }} />
+                                                                    Pipelines with YAML preview errors (unqueriable).
+                                                                </Typography>
+                                                            </Box>
+                                                        }
+                                                        placement="left"
+                                                    >
+                                                        <IconButton size="small">
+                                                            <HelpOutlineIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
+
+                                                    <Button
+                                                        size="small"
+                                                        startIcon={<RestartAltIcon />}
+                                                        onClick={() => handleFilterReset("pipeline")}
+                                                        variant="text"
+                                                    >
+                                                        Reset
+                                                    </Button>
+                                                </Stack>
+                                            }
+                                            sx={{ py: 1, color: '#3C4EC3', }}
+                                        />
+
+                                        <CardContent sx={{ pt: 2 }}>
+                                            {/* Group: Search & scope */}
+                                            <Typography variant="overline" sx={{ color: "text.secondary" }}>
+                                                Search & scope
+                                            </Typography>
+
+                                            <Grid container spacing={2} sx={{ mt: 0.5, flexWrap: 'nowrap' }}>
+                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
                                                     <TextField
+                                                        fullWidth
                                                         size="small"
                                                         variant="outlined"
-                                                        value={filter.value}
-                                                        onChange={e => handleAdvancedFilterChange(idx, 'value', e.target.value)}
-                                                        placeholder="Value"
-                                                        sx={{ minWidth: 120, flex: 2 }}
+                                                        label="Search name / ID"
+                                                        value={searchTermPipelines}
+                                                        onChange={(e) => setSearchTermPipelines(e.target.value)}
+                                                        sx={{ width: '100%' }}
                                                     />
-                                                    <FormControlLabel
-                                                        control={
-                                                            <Checkbox
-                                                                checked={!!filter.negate}
-                                                                onChange={e => handleAdvancedFilterChange(idx, 'negate', e.target.checked)}
+                                                </Grid>
+
+                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                    <FormControl fullWidth size="small" sx={{ width: '100%' }}>
+                                                        <InputLabel id="authz-label">Authorization scope</InputLabel>
+                                                        <Select
+                                                            labelId="authz-label"
+                                                            value={filterForJobAuthorizationScope}
+                                                            onChange={handlePipelineAuthZScopeChange}
+                                                            label="Authorization scope"
+                                                        >
+                                                            <MenuItem value="all">
+                                                                <em>All</em>
+                                                            </MenuItem>
+                                                            <MenuItem value="projectCollection">Organisation</MenuItem>
+                                                            <MenuItem value="project">Project</MenuItem>
+                                                        </Select>
+                                                    </FormControl>
+                                                </Grid>
+
+                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                    <FormControl fullWidth size="small" sx={{ width: '100%' }}>
+                                                        <InputLabel id="type-label">Pipeline type</InputLabel>
+                                                        <Select
+                                                            labelId="type-label"
+                                                            value={filterForPipelineType}
+                                                            onChange={handlePipelineTypeChange}
+                                                            label="Pipeline type"
+                                                        >
+                                                            <MenuItem value="all">
+                                                                <em>All</em>
+                                                            </MenuItem>
+                                                            <MenuItem value="1">Classic</MenuItem>
+                                                            <MenuItem value="2">YAML</MenuItem>
+                                                        </Select>
+                                                    </FormControl>
+                                                </Grid>
+                                            </Grid>
+
+                                            <Divider sx={{ my: 2 }} />
+
+                                            {/* Group: Flags */}
+                                            <Typography variant="overline" sx={{ color: "text.secondary" }}>
+                                                Flags
+                                            </Typography>
+
+                                            <Stack direction="row" flexWrap="wrap" gap={1.5} sx={{ mt: 1 }}>
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={pipelinesUsingFilteredResources}
+                                                            onChange={(e) =>
+                                                                setPipelinesUsingFilteredResources(e.target.checked)
+                                                            }
+                                                        />
+                                                    }
+                                                    label="Permissioned"
+                                                />
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={filterForOverprivilegedPipelines}
+                                                            onChange={(e) =>
+                                                                setFilterForOverprivilegedPipelines(e.target.checked)
+                                                            }
+                                                        />
+                                                    }
+                                                    label="Overprivileged"
+                                                />
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={filterForAlertedPipelines}
+                                                            onChange={(e) =>
+                                                                setFilterForAlertedPipelines(e.target.checked)
+                                                            }
+                                                        />
+                                                    }
+                                                    label="Alerts"
+                                                />
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={filterForDisabledPipelines}
+                                                            onChange={(e) =>
+                                                                setFilterForDisabledPipelines(e.target.checked)
+                                                            }
+                                                        />
+                                                    }
+                                                    label="Disabled"
+                                                />
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={filterForUnqueriablePipelines}
+                                                            onChange={(e) =>
+                                                                setFilterForUnqueriablePipelines(e.target.checked)
+                                                            }
+                                                        />
+                                                    }
+                                                    label="YAML error"
+                                                />
+                                            </Stack>
+
+                                            <Divider sx={{ my: 2 }} />
+
+                                            {/* Advanced builder */}
+                                            <Box
+                                                sx={{
+                                                    border: "1px solid",
+                                                    borderColor: "divider",
+                                                    borderRadius: 2,
+                                                    p: 2,
+                                                    bgcolor: (t) => t.palette.background.default,
+                                                }}
+                                            >
+                                                <Stack
+                                                    direction="row"
+                                                    justifyContent="space-between"
+                                                    alignItems="center"
+                                                    sx={{ mb: 1.5 }}
+                                                >
+                                                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                                                        Advanced filters
+                                                    </Typography>
+
+                                                    <Button
+                                                        size="small"
+                                                        startIcon={<FilterAltOffIcon />}
+                                                        onClick={() => setPipelineAdvancedFilters([{ field: "repositoryName", value: "", negate: false }])}
+                                                        // ^ change this line if you have a reset helper for advanced filters
+                                                        variant="text"
+                                                    >
+                                                        Clear
+                                                    </Button>
+                                                </Stack>
+
+                                                <Stack spacing={1.5}>
+                                                    {pipelineAdvancedFilters.map((filter, idx) => (
+                                                        <Box
+                                                            key={idx}
+                                                            sx={{
+                                                                display: "grid",
+                                                                gridTemplateColumns: {
+                                                                    xs: "1fr",
+                                                                    sm: "1.2fr 0.6fr 1.4fr auto auto",
+                                                                },
+                                                                gap: 1,
+                                                                alignItems: "center",
+                                                            }}
+                                                        >
+                                                            <FormControl size="small">
+                                                                <Select
+                                                                    value={filter.field}
+                                                                    onChange={(e) =>
+                                                                        handleAdvancedFilterChange(idx, "field", e.target.value)
+                                                                    }
+                                                                    MenuProps={{
+                                                                        PaperProps: { style: { maxHeight: 320 } },
+                                                                    }}
+                                                                >
+                                                                    <ListSubheader disableSticky>Resources</ListSubheader>
+                                                                    <MenuItem value="repositoryName">Repository Name</MenuItem>
+                                                                    <MenuItem value="repositoryRef">Repository Ref</MenuItem>
+
+                                                                    <ListSubheader disableSticky>Trigger</ListSubheader>
+                                                                    <MenuItem value="trigger">Trigger</MenuItem>
+
+                                                                    <ListSubheader disableSticky>Stage</ListSubheader>
+                                                                    <MenuItem value="stageName">Stage Name</MenuItem>
+                                                                    <MenuItem value="stagePool">Stage Pool</MenuItem>
+
+                                                                    <ListSubheader disableSticky>Job</ListSubheader>
+                                                                    <MenuItem value="jobName">Job Name</MenuItem>
+                                                                    <MenuItem value="jobPool">Job Pool</MenuItem>
+
+                                                                    <ListSubheader disableSticky>Step</ListSubheader>
+                                                                    <MenuItem value="stepType">Step Type</MenuItem>
+                                                                    <MenuItem value="stepName">Step Name</MenuItem>
+                                                                    <MenuItem value="stepDisplayName">Display Name</MenuItem>
+                                                                    <MenuItem value="stepEnabled">Step Enabled</MenuItem>
+                                                                    <MenuItem value="stepInputs">Step Inputs</MenuItem>
+                                                                </Select>
+                                                            </FormControl>
+
+                                                            <Typography
+                                                                variant="body2"
+                                                                sx={{
+                                                                    color: "text.secondary",
+                                                                    textAlign: { xs: "left", sm: "center" },
+                                                                    px: 1,
+                                                                }}
+                                                            >
+                                                                contains
+                                                            </Typography>
+
+                                                            <TextField
+                                                                size="small"
+                                                                variant="outlined"
+                                                                value={filter.value}
+                                                                onChange={(e) =>
+                                                                    handleAdvancedFilterChange(idx, "value", e.target.value)
+                                                                }
+                                                                placeholder="Value"
                                                             />
-                                                        }
-                                                        label="Negate"
-                                                        sx={{ flex: 0 }}
-                                                    />
-                                                    {idx === pipelineAdvancedFilters.length - 1 && (
-                                                        <Button onClick={handleAddAdvancedFilter} color="primary" size="small" sx={{ minWidth: 0, px: 1, flex: 0 }}>AND</Button>
 
-                                                    )}
-                                                    <Button onClick={() => handleRemoveAdvancedFilter(idx)} color="error" size="small" sx={{ minWidth: 0, px: 1, flex: 0 }} disabled={pipelineAdvancedFilters.length === 1}>x</Button>
-                                                </Box>
-                                            ))}
-                                        </Box>
+                                                            <FormControlLabel
+                                                                control={
+                                                                    <Checkbox
+                                                                        checked={!!filter.negate}
+                                                                        onChange={(e) =>
+                                                                            handleAdvancedFilterChange(
+                                                                                idx,
+                                                                                "negate",
+                                                                                e.target.checked
+                                                                            )
+                                                                        }
+                                                                    />
+                                                                }
+                                                                label="Negate"
+                                                                sx={{ m: 0 }}
+                                                            />
 
-
-                                        <Box
-                                            component="span"
-                                            onClick={() => handleFilterReset('pipeline')}
-                                            sx={{
-                                                alignSelf: 'flex-end',
-                                                cursor: 'pointer',
-                                                color: '#1a0dab',
-                                                textDecoration: 'none',
-                                                '&:hover': {
-                                                    textDecoration: 'underline',
-                                                },
-                                            }}
-                                        >
-                                            Reset Pipeline Filters
-                                        </Box>
-                                    </Box>
+                                                            <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                                                {idx === pipelineAdvancedFilters.length - 1 && (
+                                                                    <Button
+                                                                        onClick={handleAddAdvancedFilter}
+                                                                        size="small"
+                                                                        variant="outlined"
+                                                                    >
+                                                                        AND
+                                                                    </Button>
+                                                                )}
+                                                                <Button
+                                                                    onClick={() => handleRemoveAdvancedFilter(idx)}
+                                                                    size="small"
+                                                                    color="error"
+                                                                    variant="text"
+                                                                    disabled={pipelineAdvancedFilters.length === 1}
+                                                                >
+                                                                    Remove
+                                                                </Button>
+                                                            </Stack>
+                                                        </Box>
+                                                    ))}
+                                                </Stack>
+                                            </Box>
+                                        </CardContent>
+                                    </Card>
                                 </Box>
                             </Collapse>
                         </Box>
@@ -1706,8 +2010,17 @@ const ResourceTracker = () => {
                                 filteredProtectedResources={filteredProtectedResources}
                                 builds={filteredBuilds}
                                 pipelines={filteredPipelines}
-                                logic_containers={logic_containers}
+                                logic_containers={filteredLogicContainers}
                                 projects={projects}
+                                repositories={repositories}
+                                endpoints={endpoints}
+                                secureFiles={secureFiles}
+                                pools={pools}
+                                variableGroups={variableGroups}
+                                resourceTypeSelected={resource_type_selected}
+                                setResourceTypeSelected={setResourceTypeSelected}
+                                getProtectedResourcesByOrgTypeAndIdsSummary={getProtectedResourcesByOrgTypeAndIdsSummary}
+                                selectedPlatformSource={selectedPlatformSource}
                                 sx={{ height: '100%', width: '100%' }}
                             />
                         </Box>
@@ -1719,12 +2032,12 @@ const ResourceTracker = () => {
                             filteredBadge={isFilteredResource}
                             selectedType={resource_type_selected}
                             filteredProtectedResources={filteredProtectedResources}
-                            logicContainers={logic_containers}
+                            logicContainers={filteredLogicContainers}
                             projects={projects}
                             filterFocus={false}
                             onLogicContainerChange={() => {
                                 fetchLogicContainers();
-                                fetchResources(selectedScan.id);
+                                fetchResources(selectedPlatformSource.id);
                             }}
                         />
                         <PipelineTable
@@ -1738,7 +2051,7 @@ const ResourceTracker = () => {
                             secureFiles={secureFiles}
                             pools={pools}
                             variableGroups={variableGroups}
-                            selectedScan={selectedScan}
+                            selectedPlatformSource={selectedPlatformSource}
                             resourceTypeSelected={resource_type_selected}
                             setResourceTypeSelected={setResourceTypeSelected}
                             getProtectedResourcesByOrgTypeAndIdsSummary={getProtectedResourcesByOrgTypeAndIdsSummary}
@@ -1827,7 +2140,23 @@ const ResourceTracker = () => {
 
             {/* Resource Filter Fab - Bottom Left - Show when main UI is collapsed or user scrolled past 45% */}
             {(filteringUICollapsed || showFabFilters) && (
-                <ClickAwayListener onClickAway={() => setResourceFilterExpanded(false)}>
+                <ClickAwayListener onClickAway={(event) => {
+                    // Don't close if clicking on MUI Select menu or other portal components
+                    // Check if click is inside a MUI menu/popover
+                    if (event.target.closest('.MuiPopover-root') ||
+                        event.target.closest('.MuiModal-root') ||
+                        event.target.closest('.MuiMenu-root') ||
+                        event.target.closest('.MuiBackdrop-root')) {
+                        return;
+                    }
+                    // Also check if any MUI menu is currently open in the DOM
+                    if (document.querySelector('.MuiPopover-root[role="presentation"]') ||
+                        document.querySelector('.MuiMenu-root') ||
+                        document.querySelector('.MuiModal-root:not([aria-hidden="true"])')) {
+                        return;
+                    }
+                    setResourceFilterExpanded(false);
+                }}>
                     <Box sx={{
                         position: 'fixed',
                         bottom: 24,
@@ -1845,7 +2174,7 @@ const ResourceTracker = () => {
                                 sx={{
                                     mb: 2,
                                     p: 3,
-                                    backgroundColor: 'rgba(226,87,98,0.95)',
+                                    backgroundColor: '#ee4266',
                                     backdropFilter: 'blur(10px)',
                                     borderRadius: 3,
                                     maxWidth: 715,
@@ -1888,9 +2217,9 @@ const ResourceTracker = () => {
                                                 sx={{ backgroundColor: 'rgba(255,255,255,0.9)' }}
                                             >
                                                 <MenuItem value="all"><em>Any Logic Containers</em></MenuItem>
-                                                {Object.keys(logic_containers).map((key) => (
-                                                    <MenuItem key={logic_containers[key].id} value={logic_containers[key].id}>
-                                                        {logic_containers[key].name}
+                                                {filteredLogicContainers.map((container) => (
+                                                    <MenuItem key={container.id} value={container.id}>
+                                                        {container.name}
                                                     </MenuItem>
                                                 ))}
                                             </Select>
@@ -2015,7 +2344,7 @@ const ResourceTracker = () => {
                             onClick={() => setResourceFilterExpanded(!resourceFilterExpanded)}
                             size="medium"
                             sx={{
-                                bgcolor: '#e25762',
+                                bgcolor: '#ee4266',
                                 color: 'white',
                                 '&:hover': {
                                     bgcolor: '#d94450',
@@ -2026,7 +2355,7 @@ const ResourceTracker = () => {
                                 px: 3
                             }}
                         >
-                            <FilterListIcon />
+                            <TuneIcon />
                             <Typography variant="body2" sx={{ fontWeight: 500 }}>
                                 Resource Filters
                             </Typography>
@@ -2050,7 +2379,23 @@ const ResourceTracker = () => {
 
             {/* Pipeline Filter Fab - Bottom Right - Show when main UI is collapsed or user scrolled past 45% */}
             {(filteringUICollapsed || showFabFilters) && (
-                <ClickAwayListener onClickAway={() => setPipelineFilterExpanded(false)}>
+                <ClickAwayListener onClickAway={(event) => {
+                    // Don't close if clicking on MUI Select menu or other portal components
+                    // Check if click is inside a MUI menu/popover
+                    if (event.target.closest('.MuiPopover-root') ||
+                        event.target.closest('.MuiModal-root') ||
+                        event.target.closest('.MuiMenu-root') ||
+                        event.target.closest('.MuiBackdrop-root')) {
+                        return;
+                    }
+                    // Also check if any MUI menu is currently open in the DOM
+                    if (document.querySelector('.MuiPopover-root[role="presentation"]') ||
+                        document.querySelector('.MuiMenu-root') ||
+                        document.querySelector('.MuiModal-root:not([aria-hidden="true"])')) {
+                        return;
+                    }
+                    setPipelineFilterExpanded(false);
+                }}>
                     <Box sx={{
                         position: 'fixed',
                         bottom: 24,
@@ -2241,20 +2586,26 @@ const ResourceTracker = () => {
                                                             },
                                                         }}
                                                     >
+                                                        {/* Pipeline Resources Group */}
+                                                        <ListSubheader style={{ color: '#d32f2f' }} disableSticky>Resources</ListSubheader>
+                                                        <MenuItem value="repositoryName" sx={{ backgroundColor: filter.field === 'repositoryName' ? '#ffcdd2' : '#ffebee', borderRadius: 0, border: filter.field === 'repositoryName' ? '2px solid #d32f2f' : 'none' }}>Repository Name</MenuItem>
+                                                        <MenuItem value="repositoryRef" sx={{ backgroundColor: filter.field === 'repositoryRef' ? '#ffcdd2' : '#ffebee', borderRadius: 0, border: filter.field === 'repositoryRef' ? '2px solid #d32f2f' : 'none' }}>Repository Ref</MenuItem>
+
                                                         <ListSubheader style={{ color: '#1976d2' }}>Trigger</ListSubheader>
-                                                        <MenuItem value="trigger">Trigger</MenuItem>
+                                                        <MenuItem value="trigger" sx={{ backgroundColor: filter.field === 'trigger' ? '#bbdefb' : 'transparent', border: filter.field === 'trigger' ? '2px solid #1976d2' : 'none' }}>Trigger</MenuItem>
                                                         <ListSubheader style={{ color: '#388e3c' }}>Stage</ListSubheader>
-                                                        <MenuItem value="stageName">Stage Name</MenuItem>
-                                                        <MenuItem value="stagePool">Stage Pool</MenuItem>
+                                                        <MenuItem value="stageName" sx={{ backgroundColor: filter.field === 'stageName' ? '#c8e6c9' : 'transparent', border: filter.field === 'stageName' ? '2px solid #388e3c' : 'none' }}>Stage Name</MenuItem>
+                                                        <MenuItem value="stagePool" sx={{ backgroundColor: filter.field === 'stagePool' ? '#c8e6c9' : 'transparent', border: filter.field === 'stagePool' ? '2px solid #388e3c' : 'none' }}>Stage Pool</MenuItem>
                                                         <ListSubheader style={{ color: '#f57c00' }}>Job</ListSubheader>
-                                                        <MenuItem value="jobName">Job Name</MenuItem>
-                                                        <MenuItem value="jobPool">Job Pool</MenuItem>
+                                                        <MenuItem value="jobName" sx={{ backgroundColor: filter.field === 'jobName' ? '#ffe0b2' : 'transparent', border: filter.field === 'jobName' ? '2px solid #f57c00' : 'none' }}>Job Name</MenuItem>
+                                                        <MenuItem value="jobPool" sx={{ backgroundColor: filter.field === 'jobPool' ? '#ffe0b2' : 'transparent', border: filter.field === 'jobPool' ? '2px solid #f57c00' : 'none' }}>Job Pool</MenuItem>
                                                         <ListSubheader style={{ color: '#6a1b9a' }}>Step</ListSubheader>
-                                                        <MenuItem value="stepType">Step Type</MenuItem>
-                                                        <MenuItem value="stepName">Step Name</MenuItem>
-                                                        <MenuItem value="stepDisplayName">Display Name</MenuItem>
-                                                        <MenuItem value="stepEnabled">Step Enabled</MenuItem>
-                                                        <MenuItem value="stepInputs">Step Inputs</MenuItem>
+                                                        <MenuItem value="stepType" sx={{ backgroundColor: filter.field === 'stepType' ? '#e1bee7' : 'transparent', border: filter.field === 'stepType' ? '2px solid #6a1b9a' : 'none' }}>Step Type</MenuItem>
+                                                        <MenuItem value="stepName" sx={{ backgroundColor: filter.field === 'stepName' ? '#e1bee7' : 'transparent', border: filter.field === 'stepName' ? '2px solid #6a1b9a' : 'none' }}>Step Name</MenuItem>
+                                                        <MenuItem value="stepDisplayName" sx={{ backgroundColor: filter.field === 'stepDisplayName' ? '#e1bee7' : 'transparent', border: filter.field === 'stepDisplayName' ? '2px solid #6a1b9a' : 'none' }}>Display Name</MenuItem>
+                                                        <MenuItem value="stepEnabled" sx={{ backgroundColor: filter.field === 'stepEnabled' ? '#e1bee7' : 'transparent', border: filter.field === 'stepEnabled' ? '2px solid #6a1b9a' : 'none' }}>Step Enabled</MenuItem>
+                                                        <MenuItem value="stepInputs" sx={{ backgroundColor: filter.field === 'stepInputs' ? '#e1bee7' : 'transparent', border: filter.field === 'stepInputs' ? '2px solid #6a1b9a' : 'none' }}>Step Inputs</MenuItem>
+
                                                     </Select>
                                                 </FormControl>
                                                 <Typography variant="body2" color="white" sx={{ minWidth: 60, textAlign: 'center' }}>
@@ -2338,7 +2689,7 @@ const ResourceTracker = () => {
                             onClick={() => setPipelineFilterExpanded(!pipelineFilterExpanded)}
                             size="medium"
                             sx={{
-                                bgcolor: '#5669b3',
+                                bgcolor: '#3C4EC3',
                                 color: 'white',
                                 '&:hover': {
                                     bgcolor: '#4a5a9f',

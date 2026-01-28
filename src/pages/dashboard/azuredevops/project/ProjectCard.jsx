@@ -16,9 +16,6 @@ import {
     Typography,
     Box,
     Button,
-    Accordion,
-    AccordionSummary,
-    AccordionDetails,
     Table,
     TableBody,
     TableCell,
@@ -27,13 +24,6 @@ import {
     TableRow,
     ToggleButton,
     ToggleButtonGroup,
-    TextField,
-    Checkbox,
-    FormControlLabel,
-    MenuItem,
-    Select,
-    Chip,
-    Tooltip as MuiTooltip,
     Tabs,
     Tab,
     Divider
@@ -41,8 +31,7 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import resourceTypeStyle from '../theme/resourceTypeStyle';
+import resourceTypeStyle from '../../../theme/resourceTypeStyle';
 import { Pie, Bar } from 'react-chartjs-2';
 
 import {
@@ -50,21 +39,21 @@ import {
     ArcElement,
     Tooltip,
     Legend,
-    CategoryScale, // Import the CategoryScale
-    LinearScale,   // Import LinearScale for the y-axis
-    BarElement     // Import BarElement for bar charts
+    CategoryScale, 
+    LinearScale,   
+    BarElement     
 } from 'chart.js';
 import { useEffect, useRef, useState, useMemo } from 'react';
 import dayjs from 'dayjs';
-import useStore from '../../state/stores/store';
-import PipelinesTab from './project/PipelinesTab';
-import ReposTab from './project/ReposTab';
-import BuildsTab from './project/BuildsTab';
-import ServiceConnectionsTab from './project/ServiceConnectionsTab';
-import VariableGroupsTab from './project/VariableGroupsTab';
-import SecureFilesTab from './project/SecureFilesTab';
-import QueuesTab from './project/QueuesTab';
-import ArtifactsTab from './project/ArtifactsTab';
+import useStore from '../../../../state/stores/store';
+import PipelinesTab from './PipelinesTab';
+import ReposTab from './ReposTab';
+import BuildsTab from './BuildsTab';
+import ServiceConnectionsTab from './ServiceConnectionsTab';
+import VariableGroupsTab from './VariableGroupsTab';
+import SecureFilesTab from './SecureFilesTab';
+import QueuesTab from './QueuesTab';
+import ArtifactsTab from './ArtifactsTab';
 import { TabContext, TabPanel } from '@mui/lab';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
@@ -125,14 +114,14 @@ const ProjectCard = ({
     const pieChartRef = useRef(null);
     const barChartRef = useRef(null);
     const [stats, setStats] = useState(null);
-    const { fetchProjectStats, selectedScan } = useStore();
+    const { fetchProjectStats, selectedPlatformSource } = useStore();
 
-    // Fetch stats for this project using selectedScan
+    // Fetch stats for this project using selectedPlatformSource
     useEffect(() => {
         async function fetchStats() {
             try {
-                if (selectedScan && selectedScan.id && project.id) {
-                    const result = await fetchProjectStats(selectedScan.id, project.id);
+                if (selectedPlatformSource && selectedPlatformSource.id && project.id) {
+                    const result = await fetchProjectStats(selectedPlatformSource.id, project.id);
                     setStats(result);
                 } else {
                     setStats(null);
@@ -142,7 +131,7 @@ const ProjectCard = ({
             }
         }
         fetchStats();
-    }, [selectedScan, project.id]);
+    }, [selectedPlatformSource, project.id]);
 
     // Show more/less for project description
     const [showFullDescription, setShowFullDescription] = useState(false);
@@ -309,7 +298,7 @@ const ProjectCard = ({
             </Card>
         );
     }
-
+    
     const firstSeen = dayjs(project.FirstSeen);
     const lastSeen = dayjs(project.LastSeen);
     const formattedFirstSeen = firstSeen.isValid() ? firstSeen.format('YYYY-MM-DD') : 'N/A';
@@ -519,18 +508,6 @@ const ProjectCard = ({
                         </Grid>
                     </Grid>
 
-                    {/* Settings Section */}
-                    {/* General Settings Section */}
-                    {/* { console.log('projectStats:', projectStats) }
-                    <Box sx={{ mt: 2 }}>
-                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>
-                            General Settings
-                        </Typography>
-                        <GeneralSettingsTable buildSettings={project.general_settings?.build_settings} />
-                    </Box> */}
-
-                    {/* Repos */}
-                    {/* {console.log('repoStart:', repoStart, 'repoEnd:', repoEnd, 'reposTotal:', reposTotal)} */}
                     {/* Tabs Section */}
                     <Divider sx={{ mt: 5 }} />
                     <TabContext value={activeTab}>

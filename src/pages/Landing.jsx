@@ -10,30 +10,40 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 import { useEffect } from 'react';
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import AppTheme from './theme/shared-theme/AppTheme';
+
 import { Box, Stack } from '@mui/material';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 
-import Overview from './dashboard/Dashboard';
+import Dashboard from './dashboard/Dashboard';
 import PlatformManagement from './platform/Platform';
-import PolicyManagement from './policy/Policy';
 import ResourceTracker from './resource/ResourceTracker';
 import Settings from './settings/Settings';
 
 import useStore from '../state/stores/store';
+import { useAuth } from '../contexts/AuthContext';
 
+// ICONS
+import HomeRoundedIcon from '@mui/icons-material/HomeRounded';
+import ScatterPlotIcon from '@mui/icons-material/ScatterPlot';
+import GavelIcon from '@mui/icons-material/Gavel';
+import BadgeIcon from '@mui/icons-material/Badge';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 
 const Landing = () => {
   const navigate = useNavigate();
-  const { currentPage, globalSettings, selectedScan, scans, fetchScans, setSelectedScan } = useStore();
+
+  // FROM Store
+  // Platform Source = One or collection of Scans
+  const { currentPage, globalSettings, selectedPlatformSource, platformSources, fetchPlatformSources, setSelectedPlatformSource } = useStore();
+  const { user } = useAuth();
 
   
-  // Things I want to load anytime any of the routes are loaded: Orgnisations (Projects)
   useEffect(() => {
-    fetchScans();
-    if (!selectedScan && scans.length > 0) {
-      setSelectedScan(scans[1]);
+    fetchPlatformSources();
+    if (!selectedPlatformSource && platformSources.length > 0) {
+      setSelectedPlatformSource(platformSources[0]);
     }  
   }, [currentPage]);
 
@@ -41,12 +51,22 @@ const Landing = () => {
     navigate(`/${id.toLowerCase()}`);
   };
 
+  const mainListItems = [
+    { id: 'dashboard', text: 'Dashboard', icon: <HomeRoundedIcon /> },
+    { id: 'resource', text: 'Tracker', icon: <ScatterPlotIcon /> },
+    { id: 'platform', text: 'Platform Manager', icon: <BadgeIcon /> },
+    { id: 'settings', text: 'Settings', icon: <SettingsIcon /> },
+  ];
+
   return (
     <>
       <AppTheme>
-        { globalSettings.MenuLayout == 'Header' && (<Header onMenuItemClick={handleMenuItemClick} />)}
         <Box sx={{ display: 'flex' }}>
-          { globalSettings.MenuLayout == 'Sidebar' && (<Sidebar onMenuItemClick={handleMenuItemClick} />)}
+          { globalSettings.MenuLayout === 'Sidebar' ? (
+            <Sidebar onMenuItemClick={handleMenuItemClick} mainListItems={mainListItems} />
+          ) : (
+            <Header onMenuItemClick={handleMenuItemClick} mainListItems={mainListItems} />
+          )}
           <Box
             component="main"
             sx={(theme) => ({
@@ -62,16 +82,16 @@ const Landing = () => {
               sx={{
                 mx: 3,
                 pb: 5,
-                mt: globalSettings.MenuLayout == 'Sidebar' ? 3 : 10
+                mt: globalSettings.MenuLayout === 'Sidebar' ? 3 : 10
               }}
             >
+
               <Routes>
-                <Route path="/" element={<Navigate to="/overview" replace />} />
-                <Route path="/auth" element={<Navigate to="/overview" replace />} />
-                <Route path="/overview" element={<Overview />} />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/auth" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/platform" element={<PlatformManagement />} />
                 <Route path="/resource" element={<ResourceTracker />} />
-                {/* <Route path="/policy" element={<PolicyManagement />} /> */}
                 <Route path="/settings" element={<Settings />} />
               </Routes>
             </Stack>
@@ -79,7 +99,6 @@ const Landing = () => {
         </Box>
       </AppTheme>
     </>
-
   );
 };
 

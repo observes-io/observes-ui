@@ -23,6 +23,9 @@ import {
     Accordion,
     AccordionSummary,
     AccordionDetails,
+    Divider,
+    Card,
+    CardContent
 } from '@mui/material';
 import { ExpandMore } from '@mui/icons-material';
 
@@ -249,134 +252,147 @@ export default function ThirdPartyComponents() {
     const directDependencies = sbom ? getDirectDependencies(sbom) : [];
 
     return (
-        <Box sx={{ p: 2 }}>
-            <Typography variant="h4" gutterBottom>Third Party Components (SBOM)</Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 3 }}>
-                <FormControl sx={{ minWidth: 200 }}>
-                    <InputLabel>Component</InputLabel>
-                    <Select
-                        value={selectedComponent}
-                        label="Component"
-                        onChange={e => setSelectedComponent(e.target.value)}
-                    >
-                        {components.map((c) => (
-                            <MenuItem key={c} value={c}>{c}</MenuItem>
-                        ))}
-                    </Select>
-                </FormControl>
-                <FormControl sx={{ minWidth: 200 }}>
-                    <InputLabel>Version</InputLabel>
-                    <Select
-                        value={selectedVersion}
-                        label="Version"
-                        onChange={e => setSelectedVersion(e.target.value)}
-                    >
-                        {versions.map((v) => (
-                            <MenuItem key={v} value={v}>{v}</MenuItem>
-                        ))}
-                    </Select>
-                </FormControl>
-            </Stack>
-
-            {sbom && (
-                <Box sx={{ mb: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                        Root Component: {sbom.metadata?.component?.name || 'Unknown'}
-                        {sbom.metadata?.component?.version && (
-                            <Chip label={sbom.metadata.component.version} size="small" sx={{ ml: 1 }} />
-                        )}
-                    </Typography>
-                </Box>
-            )}
-
-            {directDependencies.length > 0 ? (
-                <Box>
-                    <Typography variant="h6" gutterBottom>Direct Dependencies ({directDependencies.length})</Typography>
-                    {directDependencies.map((component, i) => {
-                        const license = component.licenses && component.licenses.length > 0 ? component.licenses[0].license : null;
-                        const pkgUrl = getPackageUrl(component.purl);
-                        const bomRef = component['bom-ref'];
-                        const isExpanded = expandedAccordions.has(bomRef);
-                        const dependencyTree = dependencyTrees[bomRef] || [];
-
-                        return (
-                            <Accordion
-                                key={bomRef || i}
-                                expanded={isExpanded}
-                                onChange={handleAccordionChange(bomRef)}
-                                sx={{ mb: 2 }}
+        <Box>
+            <Card sx={{ mb: 3 }}>
+                <CardContent>
+                    <Box>
+                        <Typography variant="h5" gutterBottom fontWeight="bold" sx={{ mb: 3 }}>
+                            Third-Party Components & SBOMs
+                        </Typography>
+                    </Box>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 3 }}>
+                        <FormControl sx={{ minWidth: 200 }}>
+                            <InputLabel>Component</InputLabel>
+                            <Select
+                                value={selectedComponent}
+                                label="Component"
+                                onChange={e => {
+                                    setSelectedComponent(e.target.value);
+                                    setSelectedVersion('');
+                                }}
                             >
-                                <AccordionSummary expandIcon={<ExpandMore />}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                                        <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-                                            {component.group ? `${component.group}/` : ''}{component.name}
-                                        </Typography>
-                                        <Chip label={component.version} size="small" sx={{ ml: 1 }} />
-                                        {license && (
-                                            <Chip
-                                                label={license.id || 'Licensed'}
-                                                size="small"
-                                                variant="outlined"
-                                                sx={{ ml: 1 }}
-                                            />
-                                        )}
-                                        {pkgUrl && (
-                                            <Link
-                                                href={pkgUrl}
-                                                target="_blank"
-                                                rel="noopener"
-                                                sx={{ ml: 1, fontSize: '0.875rem' }}
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                View Package
-                                            </Link>
-                                        )}
-                                    </Box>
-                                </AccordionSummary>
-                                <AccordionDetails>
-                                    <Box sx={{ p: 2, width: '100%' }}>
-                                        {component.description && (
-                                            <Typography variant="body2" sx={{ mb: 1 }}>
-                                                <strong>Description:</strong> {component.description}
-                                            </Typography>
-                                        )}
-                                        {license && (
-                                            <Typography variant="body2" sx={{ mb: 1 }}>
-                                                <strong>License:</strong> {license.id}
-                                                {license.url && (
-                                                    <Link href={license.url} target="_blank" rel="noopener" sx={{ ml: 1 }}>
-                                                        (View License)
+                                {components.map((c) => (
+                                    <MenuItem key={c} value={c}>{c}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        <FormControl sx={{ minWidth: 200 }}>
+                            <InputLabel>Version</InputLabel>
+                            <Select
+                                value={selectedVersion}
+                                label="Version"
+                                onChange={e => setSelectedVersion(e.target.value)}
+                            >
+                                {versions.map((v) => (
+                                    <MenuItem key={v} value={v}>{v}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                    </Stack>
+
+                    <Divider sx={{ mb: 3 }} />
+
+                    {/* {sbom && (
+                        <Box sx={{ mb: 3 }}>
+                            <Typography variant="h3" gutterBottom>
+                                {sbom.metadata?.component?.name || 'Unknown'}
+                                {sbom.metadata?.component?.version && (
+                                    <Chip label={sbom.metadata.component.version} size="small" sx={{ ml: 1 }} />
+                                )}
+                            </Typography>
+                        </Box>
+                    )} */}
+
+                    {directDependencies.length > 0 ? (
+                        <Box>
+                            <Typography variant="h6" gutterBottom>Direct Dependencies ({directDependencies.length})</Typography>
+                            {directDependencies.map((component, i) => {
+                                const license = component.licenses && component.licenses.length > 0 ? component.licenses[0].license : null;
+                                const pkgUrl = getPackageUrl(component.purl);
+                                const bomRef = component['bom-ref'];
+                                const isExpanded = expandedAccordions.has(bomRef);
+                                const dependencyTree = dependencyTrees[bomRef] || [];
+
+                                return (
+                                    <Accordion
+                                        key={bomRef || i}
+                                        expanded={isExpanded}
+                                        onChange={handleAccordionChange(bomRef)}
+                                        sx={{ mb: 2 }}
+                                    >
+                                        <AccordionSummary expandIcon={<ExpandMore />}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                                                <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
+                                                    {component.group ? `${component.group}/` : ''}{component.name}
+                                                </Typography>
+                                                <Chip label={component.version} size="small" sx={{ ml: 1 }} />
+                                                {license && (
+                                                    <Chip
+                                                        label={license.id || 'Licensed'}
+                                                        size="small"
+                                                        variant="outlined"
+                                                        sx={{ ml: 1 }}
+                                                    />
+                                                )}
+                                                {pkgUrl && (
+                                                    <Link
+                                                        href={pkgUrl}
+                                                        target="_blank"
+                                                        rel="noopener"
+                                                        sx={{ ml: 1, fontSize: '0.875rem' }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        View Package
                                                     </Link>
                                                 )}
-                                            </Typography>
-                                        )}
-                                        {isExpanded && (
-                                            <>
-                                                {dependencyTree.length > 0 ? (
-                                                    <Box sx={{ mt: 2 }}>
-                                                        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
-                                                            Dependency Tree:
-                                                        </Typography>
-                                                        <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 1, backgroundColor: '#fafafa' }}>
-                                                            {renderDependencyTree(dependencyTree)}
-                                                        </Box>
-                                                    </Box>
-                                                ) : (
-                                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2, fontStyle: 'italic' }}>
-                                                        No transitive dependencies found
+                                            </Box>
+                                        </AccordionSummary>
+                                        <AccordionDetails>
+                                            <Box sx={{ p: 2, width: '100%' }}>
+                                                {component.description && (
+                                                    <Typography variant="body2" sx={{ mb: 1 }}>
+                                                        <strong>Description:</strong> {component.description}
                                                     </Typography>
                                                 )}
-                                            </>
-                                        )}
-                                    </Box>
-                                </AccordionDetails>
-                            </Accordion>
-                        );
-                    })}
-                </Box>
-            ) : (
-                <Typography>No direct dependencies found in SBOM.</Typography>
-            )}
+                                                {license && (
+                                                    <Typography variant="body2" sx={{ mb: 1 }}>
+                                                        <strong>License:</strong> {license.id}
+                                                        {license.url && (
+                                                            <Link href={license.url} target="_blank" rel="noopener" sx={{ ml: 1 }}>
+                                                                (View License)
+                                                            </Link>
+                                                        )}
+                                                    </Typography>
+                                                )}
+                                                {isExpanded && (
+                                                    <>
+                                                        {dependencyTree.length > 0 ? (
+                                                            <Box sx={{ mt: 2 }}>
+                                                                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                                                                    Dependency Tree:
+                                                                </Typography>
+                                                                <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 1, backgroundColor: '#fafafa' }}>
+                                                                    {renderDependencyTree(dependencyTree)}
+                                                                </Box>
+                                                            </Box>
+                                                        ) : (
+                                                            <Typography variant="body2" color="text.secondary" sx={{ mt: 2, fontStyle: 'italic' }}>
+                                                                No transitive dependencies found
+                                                            </Typography>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </Box>
+                                        </AccordionDetails>
+                                    </Accordion>
+                                );
+                            })}
+                        </Box>
+                    ) : (
+                        <Typography>No direct dependencies found in SBOM.</Typography>
+                    )}
+                </CardContent>
+            </Card>
         </Box>
     );
 }

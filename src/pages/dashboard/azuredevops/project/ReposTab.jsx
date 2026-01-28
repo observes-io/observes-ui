@@ -27,9 +27,9 @@ import {
     Tooltip as MuiTooltip
 } from '@mui/material';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import resourceTypeStyle from '../../theme/resourceTypeStyle';
+import resourceTypeStyle from '../../../theme/resourceTypeStyle';
 import dayjs from 'dayjs';
-import useStore from '../../../state/stores/store';
+import useStore from '../../../../state/stores/store';
 
 const ReposTab = ({ projectId, repoLanguages }) => {
 
@@ -40,14 +40,14 @@ const ReposTab = ({ projectId, repoLanguages }) => {
     const [repoMatchType, setRepoMatchType] = useState('contains');
     const [showDisabledRepos, setShowDisabledRepos] = useState(true);
     const [reposPerPage, setReposPerPage] = useState(10);
-    const { selectedScan, fetchProjectRepositories } = useStore();
+    const { selectedPlatformSource, fetchProjectRepositories } = useStore();
 
     // Fetch all repositories for this project once, handle pagination locally
     useEffect(() => {
         async function fetchRepos() {
             try {
-                if (selectedScan && selectedScan.id && projectId) {
-                    const result = await fetchProjectRepositories(selectedScan.id, projectId, null, null);
+                if (selectedPlatformSource && selectedPlatformSource.id && projectId) {
+                    const result = await fetchProjectRepositories(selectedPlatformSource.id, projectId, null, null);
                     const allRepos = Array.isArray(result) ? result : (result.repositories || []);
                     setRepos(allRepos);
                     setReposTotal(allRepos.length);
@@ -61,7 +61,7 @@ const ReposTab = ({ projectId, repoLanguages }) => {
             }
         }
         fetchRepos();
-    }, [selectedScan, projectId, fetchProjectRepositories]);
+    }, [selectedPlatformSource, projectId, fetchProjectRepositories]);
 
     // Helper to format age in days to years, months, days
     const formatAge = (days) => {

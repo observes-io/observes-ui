@@ -85,7 +85,7 @@ const formatKey = (key) => {
 
 
 
-const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filteredResourcesTypes_Ids, builds, repositories, variableGroups, secureFiles, pools, endpoints, resourceTypeSelected, setResourceTypeSelected, getProtectedResourcesByOrgTypeAndIdsSummary, selectedScan }) => {
+const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filteredResourcesTypes_Ids, builds, repositories, variableGroups, secureFiles, pools, endpoints, resourceTypeSelected, setResourceTypeSelected, getProtectedResourcesByOrgTypeAndIdsSummary, selectedPlatformSource }) => {
     const [openRows, setOpenRows] = useState({});
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(0);
@@ -103,6 +103,8 @@ const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filtered
     }, [filteredPipelines]);
 
     useEffect(() => {
+        if (!filteredPipelines) return;
+        
         const highlighted = new Set();
         Object.values(filteredPipelines).map((pipeline) => {
             if (pipeline.resourcepermissions) {
@@ -155,7 +157,7 @@ const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filtered
                     alignSelf: "center",
                     alignContent: "center",
                     textAlign: "center",
-                    color: '#5669b3'
+                    color: '#3C4EC3'
                 }}
             >
                 Pipelines
@@ -180,7 +182,7 @@ const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filtered
                     </TableRow>
                 </TableHead>
                 <TableBody>
-                    {Object.values(filteredPipelines).slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((pipeline) => (
+                    {filteredPipelines && Object.values(filteredPipelines).slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((pipeline) => (
                         <React.Fragment key={pipeline.id}>
                             <TableRow
                                 sx={{
@@ -329,7 +331,7 @@ const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filtered
                                                     resourceTypeSelected={resourceTypeSelected}
                                                     setResourceTypeSelected={setResourceTypeSelected}
                                                     getProtectedResourcesByOrgTypeAndIdsSummary={getProtectedResourcesByOrgTypeAndIdsSummary}
-                                                    selectedScan={selectedScan}
+                                                    selectedPlatformSource={selectedPlatformSource}
                                                 />
                                                 <Box sx={{ textAlign: 'right', mt: 1 }}>
                                                     <IconButton aria-label="close row" size="small" onClick={() => setOpenRows((prev) => ({ ...prev, [pipeline.id]: false }))}>
@@ -348,7 +350,7 @@ const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filtered
             <TablePagination
                 rowsPerPageOptions={[5, 10, 25]}
                 component="div"
-                count={filteredPipelines.length}
+                count={filteredPipelines ? filteredPipelines.length : 0}
                 rowsPerPage={rowsPerPage}
                 page={page}
                 onPageChange={handleChangePage}

@@ -7,7 +7,15 @@ Licensed under PolyForm Internal Use 1.0.0, see LICENSE or https://polyformproje
 Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 */
 
-.disabled-select {
-    border: 1px solid red;
-    background-color: #f8d7da;
-}
+import { Box } from '@mui/material';
+import ThirdPartyComponents from './ThirdPartyComponents';
+
+const SupplyChainSettings = () => {
+  return (
+    <Box>
+      <ThirdPartyComponents />
+    </Box>
+  );
+};
+
+export default SupplyChainSettings;

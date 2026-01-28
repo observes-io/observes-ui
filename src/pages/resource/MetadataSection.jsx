@@ -101,7 +101,7 @@ const MetadataSection = ({ build, pipeline, branch }) => {
 }
 
 const MetadataItem = ({ label, value }) => (
-  <Grid item xs={12}>
+  <Grid size={12}>
     <Box>
       <Typography variant="subtitle2" color="textSecondary">
         {label}

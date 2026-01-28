@@ -28,11 +28,11 @@ import {
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import Tooltip from '@mui/material/Tooltip';
-import useStore from '../../state/stores/store';
+import useStore from '../../../../state/stores/store';
 
 function CommitterCard({ committer }) {
 
-    const { selectedScan, fetchCommits } = useStore();
+    const { selectedPlatformSource, fetchCommits } = useStore();
     const [hoveredCommitId, setHoveredCommitId] = React.useState(null);
     const [committerPage, setCommitterPage] = React.useState(1);
     const [anchorEl, setAnchorEl] = React.useState(null);
@@ -47,7 +47,7 @@ function CommitterCard({ committer }) {
     useEffect(() => {
         async function fetchUserCommits() {
             setCommitsLoading(true);
-            if (!selectedScan || !selectedScan.id) {
+            if (!selectedPlatformSource || !selectedPlatformSource.id) {
                 setCommits({ commits: [], total: 0 });
                 setCommitsLoading(false);
                 return;
@@ -58,7 +58,7 @@ function CommitterCard({ committer }) {
                 return;
             }
             try {
-                const fetchedCommits = await fetchCommits(selectedScan.id, committer.committerEmail, committerPage, commitsPerPage);
+                const fetchedCommits = await fetchCommits(selectedPlatformSource.id, committer.committerEmail, committerPage, commitsPerPage);
                 setCommits(fetchedCommits || { commits: [], total: 0 });
             } catch (err) {
                 setCommits({ commits: [], total: 0 });
@@ -66,7 +66,7 @@ function CommitterCard({ committer }) {
             setCommitsLoading(false);
         }
         fetchUserCommits();
-    }, [selectedScan, committer, committerPage, commitsPerPage, fetchCommits]);
+    }, [selectedPlatformSource, committer, committerPage, commitsPerPage, fetchCommits]);
 
     return (
         <Card sx={{ mb: 2, width: '100%', boxShadow: 3 }}>

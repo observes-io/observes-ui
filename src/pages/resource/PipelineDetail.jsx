@@ -23,6 +23,7 @@ import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import MetadataSection from './MetadataSection';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import ResourceSummary from './ResourceSummary';
 
 
 
@@ -276,122 +277,7 @@ const ExecutionSection = ({ build }) => {
     );
 };
 
-// Top-level helper component for async resource summary fetching and rendering
-function ResourceSummary({ selectedScanId, resourceType, resourceTypeSelected, resourceIds, getProtectedResourcesByOrgTypeAndIdsSummary, setResourceTypeSelected, formatKey }) {
-    const [summary, setSummary] = React.useState([]);
-    const [loading, setLoading] = React.useState(true);
-
-    React.useEffect(() => {
-        setLoading(true);
-        async function fetchSummary() {
-            try {
-                const result = await getProtectedResourcesByOrgTypeAndIdsSummary(selectedScanId, resourceType, resourceIds);
-                setSummary(result);
-
-            } finally {
-                setLoading(false);
-            }
-        }
-        fetchSummary();
-    }, [selectedScanId, resourceType, resourceIds, getProtectedResourcesByOrgTypeAndIdsSummary]);
-
-    if (loading) {
-        return <Typography variant="body2" color="text.secondary">Loading...</Typography>;
-    }
-
-    if (summary && summary.length > 0) {
-        return (
-            <>
-                {summary.map(res => (
-                    res.webUrl ? (
-                        <a
-                            key={String(res.id)}
-                            href={res.webUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                                display: 'block',
-                                cursor: 'pointer',
-                                textDecoration: 'underline dotted',
-                                color: '#007FFF',
-                                pointerEvents: 'auto'
-                            }}
-                            aria-disabled={resourceTypeSelected === resourceType}
-                        >
-                            {res.name} ({res.id})
-                        </a>
-                    ) : (
-                        
-                        <span
-                            key={String(res.id)}
-                            style={{
-                                display: 'block',
-                                textDecoration: 'underline dotted',
-                                color: '#888'
-                            }}
-                        >
-                            {res.name} ({res.id})
-                        </span>
-                    )
-                ))}
-                <p
-                    style={{
-                        fontSize: '0.8em',
-                        color: resourceTypeSelected === resourceType ? '#888' : '#1e77c0ff',
-                        cursor: 'pointer',
-                        marginBottom: 8
-                    }}
-                    onClick={() => {
-                        if (resourceTypeSelected !== resourceType) {
-                            setResourceTypeSelected(resourceType);
-                        }
-                    }}
-                    aria-disabled={resourceTypeSelected === resourceType}
-                >
-                    See more {formatKey(resourceType)}
-                </p>
-            </>
-        );
-    }
-    // fallback to just showing IDs if no resource objects found
-    return Array.isArray(resourceIds) ? (
-        <>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-                <div>
-                    {resourceIds.map(id => (
-                        <span key={id} style={{ display: 'block' }}>
-                            {id}
-                        </span>
-                    ))}
-                </div>
-            </Box>
-            <p
-                style={{ fontSize: '0.8em', color: '#1e77c0ff', cursor: 'pointer', marginBottom: 8 }}
-                onClick={() => {
-                    setResourceTypeSelected(resourceType);
-                }}
-            >
-                See more on {formatKey(resourceType)}
-            </p>
-        </>
-    ) : <>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-            <span key={resourceIds} style={{ display: 'block' }}>
-                {resourceIds}
-            </span>
-        </Box>
-        <p
-            style={{ fontSize: '0.8em', color: '#1e77c0ff', cursor: 'pointer', marginBottom: 8 }}
-            onClick={() => {
-                setResourceTypeSelected(resourceType);
-            }}
-        >
-            See more on {formatKey(resourceType)}
-        </p>
-    </>;
-}
-
-const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKey, repositories, variableGroups, secureFiles, pools, endpoints, resourceTypeSelected, selectedScan, setResourceTypeSelected, getProtectedResourcesByOrgTypeAndIdsSummary }) => {
+const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKey, repositories, variableGroups, secureFiles, pools, endpoints, resourceTypeSelected, selectedPlatformSource, setResourceTypeSelected, getProtectedResourcesByOrgTypeAndIdsSummary }) => {
     const branchOptions = Object.keys(pipeline.builds.preview || {});
     const [selectedBranchIndex, setSelectedBranchIndex] = useState(0);
     const [showResourcePermissions, setShowResourcePermissions] = useState(true);
@@ -422,7 +308,7 @@ const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKe
             <Card sx={{ mb: 2, backgroundColor: 'white', alignItems: 'center', display: 'flex', flexDirection: 'column' }}>
                 <CardContent>
                     <Grid container spacing={2}>
-                        <Grid item sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Grid sx={{ display: 'flex', alignItems: 'center' }}>
                             <Typography><strong>AuthZ Scope: </strong>
                                 <span
                                     style={{
@@ -433,9 +319,9 @@ const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKe
                             </Typography>
                         </Grid>
 
-                        <Grid item ><strong>Pool:</strong> {pipeline.queue.name}</Grid>
+                        <Grid><strong>Pool:</strong> {pipeline.queue.name}</Grid>
 
-                        <Grid item >
+                        <Grid>
                             {pipeline.process.type == 1 && (
                                 <strong>Designer Pipeline</strong>
                             )}
@@ -450,13 +336,13 @@ const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKe
                     {pipeline.triggers ? pipeline.triggers.map((trigger, index) => (
                         <Grid container spacing={1} sx={{ mt: 2 }} key={index}>
                             {trigger.triggerType &&
-                                <Grid item ><strong>Trigger Type:</strong> {trigger.triggerType}</Grid>
+                                <Grid><strong>Trigger Type:</strong> {trigger.triggerType}</Grid>
                             }
                             {trigger.branchFilters.length > 0 &&
-                                <Grid item ><strong>Branch Filters:</strong> {trigger.branchFilters.join(', ')}</Grid>
+                                <Grid><strong>Branch Filters:</strong> {trigger.branchFilters.join(', ')}</Grid>
                             }
                             {trigger.branchFilters.length > 0 &&
-                                <Grid item ><strong>Path Filters:</strong> {trigger.pathFilters.join(', ') || 'None'}</Grid>
+                                <Grid><strong>Path Filters:</strong> {trigger.pathFilters.join(', ') || 'None'}</Grid>
                             }
                         </Grid>
                     )) : <Grid container spacing={1} sx={{ mt: 2 }}>
@@ -492,7 +378,7 @@ const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKe
                                                 })
                                             }}
                                         >
-                                            <Grid item sx={{ ml: 1 }}>
+                                            <Grid sx={{ ml: 1 }}>
                                                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                                                     {(() => {
                                                         switch (key.toLowerCase()) {
@@ -518,7 +404,7 @@ const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKe
                                                             <Box sx={{ display: 'flex', flexDirection: 'column', ml: 2 }}>
                                                                 <Typography>
                                                                     <ResourceSummary
-                                                                        selectedScanId={selectedScan.id}
+                                                                        selectedPlatformSourceId={selectedPlatformSource.id}
                                                                         resourceType={key}
                                                                         resourceIds={value}
                                                                         getProtectedResourcesByOrgTypeAndIdsSummary={getProtectedResourcesByOrgTypeAndIdsSummary}
@@ -680,10 +566,10 @@ const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKe
                                         Option #{index + 1}
                                     </Typography>
                                     <Grid container spacing={1}>
-                                        <Grid item ><strong>Enabled:</strong> {String(option.enabled)}</Grid>
-                                        <Grid item ><strong>Definition ID:</strong> {option.definition?.id}</Grid>
-                                        <Grid item ><strong>Inputs:</strong></Grid>
-                                        <Grid item >
+                                        <Grid><strong>Enabled:</strong> {String(option.enabled)}</Grid>
+                                        <Grid><strong>Definition ID:</strong> {option.definition?.id}</Grid>
+                                        <Grid><strong>Inputs:</strong></Grid>
+                                        <Grid>
                                             <pre style={codeBlockStyle}>{JSON.stringify(option.inputs, null, 2)}</pre>
                                         </Grid>
                                     </Grid>
@@ -704,7 +590,7 @@ const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKe
                         {pipeline.variables ? (
                             <Grid container spacing={2}>
                                 {Object.entries(pipeline.variables).map(([key, value]) => (
-                                    <Grid item key={key}>
+                                    <Grid key={key}>
                                         <Card variant="outlined">
                                             <CardContent>
                                                 <Typography variant="subtitle2">{key}</Typography>

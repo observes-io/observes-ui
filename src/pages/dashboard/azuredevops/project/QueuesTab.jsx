@@ -21,7 +21,7 @@ import {
     Select,
 } from '@mui/material';
 import dayjs from 'dayjs';
-import useStore from '../../../state/stores/store';
+import useStore from '../../../../state/stores/store';
 
 const QueuesTab = ({ projectId }) => {
     const [queues, setQueues] = useState([]);
@@ -32,15 +32,15 @@ const QueuesTab = ({ projectId }) => {
     const [queuesPerPage, setQueuesPerPage] = useState(10);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
-    const { selectedScan, fetchProtectedResourcesByTypeOrgProject } = useStore();
+    const { selectedPlatformSource, fetchProtectedResourcesByTypeOrgProject } = useStore();
 
     useEffect(() => {
         async function fetchQueues() {
             setLoading(true);
             setError(null);
             try {
-                if (selectedScan && selectedScan.id && projectId) {
-                    const result = await fetchProtectedResourcesByTypeOrgProject(selectedScan.id, 'queue', projectId);
+                if (selectedPlatformSource && selectedPlatformSource.id && projectId) {
+                    const result = await fetchProtectedResourcesByTypeOrgProject(selectedPlatformSource.id, 'queue', projectId);
                     let allQueues = [];
                     if (result && Array.isArray(result.resources)) {
                         allQueues = result.resources;
@@ -61,7 +61,7 @@ const QueuesTab = ({ projectId }) => {
             setLoading(false);
         }
         fetchQueues();
-    }, [selectedScan, projectId, fetchProtectedResourcesByTypeOrgProject]);
+    }, [selectedPlatformSource, projectId, fetchProtectedResourcesByTypeOrgProject]);
 
     // Filtered queues and local pagination
     const filteredQueues = queuesSearch

@@ -22,7 +22,7 @@ import {
     Chip,
 } from '@mui/material';
 import dayjs from 'dayjs';
-import useStore from '../../../state/stores/store';
+import useStore from '../../../../state/stores/store';
 
 
 const PipelinesTab = ({ projectId }) => {
@@ -35,7 +35,7 @@ const PipelinesTab = ({ projectId }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    const { selectedScan, fetchPipelinesByOrgAndProject } = useStore();
+    const { selectedPlatformSource, fetchPipelinesByOrgAndProject } = useStore();
 
     // Fetch all pipelines for this project once, handle pagination locally
     useEffect(() => {
@@ -43,8 +43,8 @@ const PipelinesTab = ({ projectId }) => {
             setLoading(true);
             setError(null);
             try {
-                if (selectedScan && selectedScan.id && projectId) {
-                    const result = await fetchPipelinesByOrgAndProject(selectedScan.id, projectId);
+                if (selectedPlatformSource && selectedPlatformSource.id && projectId) {
+                    const result = await fetchPipelinesByOrgAndProject(selectedPlatformSource.id, projectId);
                     let allPipelines = [];
                     if (Array.isArray(result)) {
                         allPipelines = result;
@@ -68,7 +68,7 @@ const PipelinesTab = ({ projectId }) => {
             setLoading(false);
         }
         fetchPipelines();
-    }, [selectedScan, projectId, fetchPipelinesByOrgAndProject]);
+    }, [selectedPlatformSource, projectId, fetchPipelinesByOrgAndProject]);
 
 
     // Filtered pipelines and local pagination

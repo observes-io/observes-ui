@@ -29,7 +29,6 @@ export function ensureObjectStore(dbName, storeName) {
           const upgradeDb = event.target.result;
           if (!upgradeDb.objectStoreNames.contains(storeName)) {
             upgradeDb.createObjectStore(storeName, { keyPath: "id" });
-            console.log(`Object store '${storeName}' created (upgrade)`);
           }
         };
         upgradeRequest.onsuccess = (event) => {

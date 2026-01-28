@@ -29,8 +29,6 @@ const OrgCard = ({ scan, handleCardClick, isSelected, handleCardClickDelete }) =
     }
   };
 
-  // console.log("Rendering OrgCard for:", scan.id);
-  // console.log("Scan details:", scan);
 
   return (
     <Card
@@ -68,10 +66,12 @@ const OrgCard = ({ scan, handleCardClick, isSelected, handleCardClickDelete }) =
               .filter(([key]) => key !== 'queue')
               .map(([key, value]) => {
                 let displayKey = key;
-                if (key === 'endpoint' || key === 'endpoints') displayKey = 'Svc Connect';
-                else if (key === 'variablegroup' ) displayKey = 'Var Groups';
-                else if (key === 'securefile' ) displayKey = 'Sec Files';
+                if (key === 'endpoint' || key === 'endpoints') displayKey = 'Service Connections';
+                else if (key === 'variablegroup' ) displayKey = 'Variable Groups';
+                else if (key === 'securefile' ) displayKey = 'Secure Files';
                 else if (key === 'builds') displayKey = 'Executions';
+                else if (key === 'repository' ) displayKey = 'Repositories';
+                else if (key === 'environment' ) displayKey = 'Environments';
                 else displayKey = key.replace(/_/g, ' ');
                 displayKey = displayKey.replace(/\b\w/g, c => c.toUpperCase());
                 return [displayKey, value];

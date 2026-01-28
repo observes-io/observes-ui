@@ -27,9 +27,9 @@ import {
     Tooltip as MuiTooltip
 } from '@mui/material';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import resourceTypeStyle from '../../theme/resourceTypeStyle';
+import resourceTypeStyle from '../../../theme/resourceTypeStyle';
 import dayjs from 'dayjs';
-import useStore from '../../../state/stores/store';
+import useStore from '../../../../state/stores/store';
 
 
 const BuildsTab = ({ projectId }) => {
@@ -43,7 +43,7 @@ const BuildsTab = ({ projectId }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    const { selectedScan, fetchBuildsByOrgAndProject } = useStore();
+    const { selectedPlatformSource, fetchBuildsByOrgAndProject } = useStore();
 
     // Fetch all builds for this project once, handle pagination locally
     useEffect(() => {
@@ -51,8 +51,8 @@ const BuildsTab = ({ projectId }) => {
             setLoading(true);
             setError(null);
             try {
-                if (selectedScan && selectedScan.id && projectId) {
-                    const result = await fetchBuildsByOrgAndProject(selectedScan.id, projectId);
+                if (selectedPlatformSource && selectedPlatformSource.id && projectId) {
+                    const result = await fetchBuildsByOrgAndProject(selectedPlatformSource.id, projectId);
                     let allBuilds = [];
                     if (Array.isArray(result)) {
                         allBuilds = result;
@@ -75,7 +75,7 @@ const BuildsTab = ({ projectId }) => {
             setLoading(false);
         }
         fetchBuilds();
-    }, [selectedScan, projectId, fetchBuildsByOrgAndProject]);
+    }, [selectedPlatformSource, projectId, fetchBuildsByOrgAndProject]);
 
     // Filtered builds and local pagination
     const filteredBuilds = buildSearch

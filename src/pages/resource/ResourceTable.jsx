@@ -15,11 +15,12 @@ import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import useStore from '../../state/stores/store';
 import { resourceTypes } from '../../utils/resourceTypes';
+import { addResourceToLogicContainer, removeResourceFromLogicContainer, resourceBelongsToContainer } from '../../utils/logicContainerHelpers';
 
 
 const ResourceTable = ({ selectedType, filteredProtectedResources, logicContainers, projects, filterFocus, filteredBadge, onLogicContainerChange }) => {
 
-  const { updateLogicContainer } = useStore();
+  const { updateLogicContainer, selectedPlatformSource } = useStore();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -59,28 +60,44 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
   const handleAddLogicContainer = async (logicContainerId, resourceId) => {
     const container = logicContainers.find(lc => lc.id === logicContainerId);
     if (!container) return;
-    const resources = Array.isArray(container.resources) ? container.resources : [];
-    if (!resources.includes(resourceId)) {
-      const updated = { ...container, resources: [...resources, resourceId] };
-      await updateLogicContainer(logicContainerId, updated);
-      if (onLogicContainerChange) onLogicContainerChange();
-    } else {
-      if (onLogicContainerChange) onLogicContainerChange();
+    
+    // Get current platform source ID
+    const platformSourceId = selectedPlatformSource?.id;
+    if (!platformSourceId) {
+      console.error('No platform source selected');
+      return;
     }
+    
+    // Check if resource already belongs to container in this platform source
+    if (resourceBelongsToContainer(container, platformSourceId, resourceId)) {
+      if (onLogicContainerChange) onLogicContainerChange();
+      return;
+    }
+    
+    // Add resource with platform source scoping
+    const updated = addResourceToLogicContainer(container, platformSourceId, resourceId);
+    await updateLogicContainer(logicContainerId, updated);
+    if (onLogicContainerChange) onLogicContainerChange();
   };
 
   const handleRemoveLogicContainer = async (logicContainerId, resourceId) => {
     const container = logicContainers.find(lc => lc.id === logicContainerId);
-    if (!container || !Array.isArray(container.resources)) {
+    if (!container) return;
+    
+    // Get current platform source ID
+    const platformSourceId = selectedPlatformSource?.id;
+    if (!platformSourceId) {
+      console.error('No platform source selected');
       return;
     }
     
-    // Only proceed if the resource is actually in the container
-    if (!container.resources.includes(resourceId)) {
+    // Check if resource belongs to container in this platform source
+    if (!resourceBelongsToContainer(container, platformSourceId, resourceId)) {
       return;
     }
     
-    const updated = { ...container, resources: container.resources.filter(id => id !== resourceId) };
+    // Remove resource with platform source scoping
+    const updated = removeResourceFromLogicContainer(container, platformSourceId, resourceId);
     await updateLogicContainer(logicContainerId, updated);
     if (onLogicContainerChange) onLogicContainerChange();
   };
@@ -162,8 +179,23 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
   };
 
   function getLogicContainersForResource(resourceId, logicContainers) {
-    return logicContainers
-      .filter(container => Array.isArray(container.resources) && container.resources.includes(resourceId))
+    const platformSourceId = selectedPlatformSource?.id;
+    if (!platformSourceId) return [];
+    
+    return logicContainers.filter(container => {
+      // New format: resources scoped per platform source
+      if (container.resources && typeof container.resources === 'object' && !Array.isArray(container.resources)) {
+        if (container.resources[platformSourceId]) {
+          return container.resources[platformSourceId].map(String).includes(String(resourceId));
+        }
+        return false;
+      }
+      // Old format: simple array (backwards compatibility)
+      if (Array.isArray(container.resources)) {
+        return container.resources.map(String).includes(String(resourceId));
+      }
+      return false;
+    });
   }
 
   const renderLogicContainerCell = (resource) => {
@@ -212,17 +244,33 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
           onClose={() => { setAnchorEl(null); setAddMenuResourceId(null); }}
         >
 
-          {logicContainers.filter(lc => !resource_logicContainers.map(lc => lc.id).includes(lc.id)).map(lc => (
-            <MenuItem key={lc.id} onClick={() => {
-              handleAddLogicContainer(lc.id, resource.id);
-              setAnchorEl(null);
-              setAddMenuResourceId(null);
-            }}>
-              {lc.name}
-            </MenuItem>
-          ))}
-          {logicContainers.filter(lc => !resource_logicContainers.includes(lc.id)).length === 0 && (
-            <MenuItem disabled>No more logic containers</MenuItem>
+          {logicContainers
+            .filter(lc => {
+              // Only show containers available in current platform source
+              const platformSourceId = selectedPlatformSource?.id;
+              if (!platformSourceId) return false;
+              return lc.platform_source_ids && lc.platform_source_ids.includes(platformSourceId);
+            })
+            .filter(lc => !resource_logicContainers.map(rlc => rlc.id).includes(lc.id))
+            .map(lc => (
+              <MenuItem key={lc.id} onClick={() => {
+                handleAddLogicContainer(lc.id, resource.id);
+                setAnchorEl(null);
+                setAddMenuResourceId(null);
+              }}>
+                {lc.name}
+              </MenuItem>
+            ))
+          }
+          {logicContainers
+            .filter(lc => {
+              const platformSourceId = selectedPlatformSource?.id;
+              if (!platformSourceId) return false;
+              return lc.platform_source_ids && lc.platform_source_ids.includes(platformSourceId);
+            })
+            .filter(lc => !resource_logicContainers.map(rlc => rlc.id).includes(lc.id))
+            .length === 0 && (
+            <MenuItem disabled>No more logic containers available</MenuItem>
           )}
         </Menu>
       </Box>
@@ -245,17 +293,31 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
           open={Boolean(anchorEl) && addMenuResourceId === resource.id}
           onClose={() => { setAnchorEl(null); setAddMenuResourceId(null); }}
         >
-          {logicContainers.map(lc => (
-            <MenuItem key={lc.id} onClick={() => {
-              handleAddLogicContainer(lc.id, resource.id);
-              setAnchorEl(null);
-              setAddMenuResourceId(null);
-            }}>
-              {lc.name}
-            </MenuItem>
-          ))}
-          {logicContainers.length === 0 && (
-            <MenuItem disabled>No logic containers</MenuItem>
+          {logicContainers
+            .filter(lc => {
+              // Only show containers available in current platform source
+              const platformSourceId = selectedPlatformSource?.id;
+              if (!platformSourceId) return false;
+              return lc.platform_source_ids && lc.platform_source_ids.includes(platformSourceId);
+            })
+            .map(lc => (
+              <MenuItem key={lc.id} onClick={() => {
+                handleAddLogicContainer(lc.id, resource.id);
+                setAnchorEl(null);
+                setAddMenuResourceId(null);
+              }}>
+                {lc.name}
+              </MenuItem>
+            ))
+          }
+          {logicContainers
+            .filter(lc => {
+              const platformSourceId = selectedPlatformSource?.id;
+              if (!platformSourceId) return false;
+              return lc.platform_source_ids && lc.platform_source_ids.includes(platformSourceId);
+            })
+            .length === 0 && (
+            <MenuItem disabled>No logic containers available for this platform source</MenuItem>
           )}
         </Menu>
       </Box>
@@ -499,7 +561,7 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
         })
       }}
       component={Paper}>
-      <Typography variant="h6" sx={{ marginTop: 2, alignSelf: 'center', alignContent: 'center', textAlign: 'center', color: "#e25762" }}>
+      <Typography variant="h6" sx={{ marginTop: 2, alignSelf: 'center', alignContent: 'center', textAlign: 'center', color: "#ee4266" }}>
         {selectedType === 'pool_merged' ? 'Agent Pools' : getResourceTypeLabel(selectedType)} Resources
         <Badge
           badgeContent={filteredBadge}
