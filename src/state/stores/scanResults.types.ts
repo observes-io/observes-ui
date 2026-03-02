@@ -191,6 +191,13 @@ export interface EndpointResource {
   k_project_shared_from: { id: string; name: string }[];
   checks: Check[];
   pipelinepermissions: string[];
+  executions?: Array<{
+    date?: string;
+    timestamp?: string;
+    lastExecuted?: string;
+    lastExecution?: string;
+    [key: string]: any;
+  }>;
 }
 
 export interface EndpointResourceData {

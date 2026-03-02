@@ -113,6 +113,43 @@ const resourceTypeStyle = {
         strokeWidth: 1,
         radius: 5
     },
+    // Resource type specific styling for pipeline view
+    resource_endpoint: {
+        fill: "#ee4266", // Service connections - red
+        stroke: "#fff",
+        strokeWidth: 2,
+        radius: 8
+    },
+    resource_variablegroup: {
+        fill: "#2ecc71", // Variable groups - green
+        stroke: "#fff",
+        strokeWidth: 2,
+        radius: 8
+    },
+    resource_repository: {
+        fill: "#3498db", // Repositories - blue
+        stroke: "#fff",
+        strokeWidth: 2,
+        radius: 8
+    },
+    resource_securefile: {
+        fill: "#f39c12", // Secure files - orange
+        stroke: "#fff",
+        strokeWidth: 2,
+        radius: 8
+    },
+    resource_environment: {
+        fill: "#9b59b6", // Environments - purple
+        stroke: "#fff",
+        strokeWidth: 2,
+        radius: 8
+    },
+    resource_pool: {
+        fill: "#16a085", // Agent pools - teal (special, execution resources)
+        stroke: "#fff",
+        strokeWidth: 3,
+        radius: 10
+    },
     languages: {
         HCL: {
             fill: "#9d6ad1",

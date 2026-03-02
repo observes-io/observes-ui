@@ -9,8 +9,9 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 
 import React, { useState, useEffect } from "react";
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
-import { Box, Badge, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, TablePagination, Tooltip } from "@mui/material";
+import { Box, Badge, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, TablePagination, Tooltip, Button, ToggleButton, ToggleButtonGroup } from "@mui/material";
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import DownloadIcon from '@mui/icons-material/Download';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import useStore from '../../state/stores/store';
@@ -18,13 +19,14 @@ import { resourceTypes } from '../../utils/resourceTypes';
 import { addResourceToLogicContainer, removeResourceFromLogicContainer, resourceBelongsToContainer } from '../../utils/logicContainerHelpers';
 
 
-const ResourceTable = ({ selectedType, filteredProtectedResources, logicContainers, projects, filterFocus, filteredBadge, onLogicContainerChange }) => {
+const ResourceTable = ({ selectedType, filteredProtectedResources, allProtectedResources, logicContainers, projects, filterFocus, filteredBadge, onLogicContainerChange, pipelines }) => {
 
   const { updateLogicContainer, selectedPlatformSource } = useStore();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [anchorEl, setAnchorEl] = useState(null);
   const [addMenuResourceId, setAddMenuResourceId] = useState(null);
+  const [downloadMode, setDownloadMode] = useState('filtered'); // 'filtered' or 'all'
 
   if (!filteredProtectedResources) {
     return null; // or some loading indicator
@@ -547,6 +549,171 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
     });
   };
 
+  // Helper function to escape CSV values
+  const escapeCSV = (value) => {
+    if (value === null || value === undefined) return '';
+    const stringValue = String(value);
+    // If the value contains commas, quotes, or newlines, wrap it in quotes and escape existing quotes
+    if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+      return `"${stringValue.replace(/"/g, '""')}"`;
+    }
+    return stringValue;
+  };
+
+  // Function to get pipeline details from pipelinepermissions
+  const getPipelineDetails = (resource) => {
+    let pipelinePermissions = [];
+    
+    // Handle pool_merged resources differently (they have queues)
+    if (selectedType === 'pool_merged' && resource?.queues) {
+      const uniquePipelinePermissions = [];
+      resource.queues.forEach((queue) => {
+        queue.pipelinepermissions?.forEach((permission) => {
+          if (!permission.startsWith("queue") && !uniquePipelinePermissions.includes(permission)) {
+            uniquePipelinePermissions.push(permission);
+          }
+        });
+      });
+      pipelinePermissions = uniquePipelinePermissions;
+    } else if (Array.isArray(resource?.pipelinepermissions)) {
+      pipelinePermissions = [...new Set(resource.pipelinepermissions)];
+    }
+
+    if (!pipelines || pipelinePermissions.length === 0) {
+      return { count: 0, names: [] };
+    }
+
+    const pipelineDetails = [];
+    pipelinePermissions.forEach(permissionId => {
+      // Extract pipeline ID from permission format (e.g., "repository_123" -> "123")
+      const pipelineId = permissionId.split('_').pop();
+      
+      // Find pipeline in the pipelines object
+      const pipeline = pipelines && typeof pipelines === 'object' 
+        ? Object.values(pipelines).find(p => String(p.id) === String(pipelineId))
+        : null;
+
+      if (pipeline) {
+        const pipelineName = pipeline.name || 'Unknown Pipeline';
+        const pipelineUrl = pipeline.k_url || pipeline._links?.web?.href || '';
+        pipelineDetails.push(`${pipelineName} (${pipelineUrl})`);
+      }
+    });
+
+    return {
+      count: pipelinePermissions.length,
+      names: pipelineDetails
+    };
+  };
+
+  // Function to check if resource is cross-project
+  const isCrossProject = (resource) => {
+    // For pool_merged, check if queues reference multiple projects
+    if (selectedType === 'pool_merged' && resource?.queues) {
+      const uniqueProjects = new Set();
+      resource.queues.forEach(queue => {
+        if (queue.k_project) {
+          uniqueProjects.add(queue.k_project.id);
+        }
+      });
+      return uniqueProjects.size > 1;
+    }
+    
+    // For other resources, check k_projects_refs
+    const projectRefs = resource?.k_projects_refs;
+    if (Array.isArray(projectRefs)) {
+      return projectRefs.length > 1;
+    }
+    return false;
+  };
+
+  // Function to get logic container names for a resource
+  const getLogicContainerNames = (resource) => {
+    const containers = getLogicContainersForResource(resource.id, logicContainers);
+    return containers.map(lc => lc.name).join('; ');
+  };
+
+  // Function to download CSV
+  const downloadCSV = () => {
+    const resourcesToExport = downloadMode === 'all' ? allProtectedResources : filteredProtectedResources;
+    
+    if (!resourcesToExport || resourcesToExport.length === 0) {
+      return;
+    }
+
+    // CSV Headers
+    const headers = [
+      'Resource Name',
+      'Resource Type',
+      'Number of Pipelines',
+      'Pipeline Names (with URLs)',
+      'Description',
+      'Cross Project',
+      'Logic Containers',
+      'Protected',
+      'Last Used Date',
+      'Web URL'
+    ];
+
+    // Generate CSV rows
+    const rows = resourcesToExport.map(resource => {
+      const pipelineInfo = getPipelineDetails(resource);
+      const resourceTypeLabel = getResourceTypeLabel(selectedType);
+      const description = resource?.description || '';
+      const crossProject = isCrossProject(resource) ? 'Yes' : 'No';
+      const logicContainerNames = getLogicContainerNames(resource);
+      const isProtected = (Array.isArray(resource?.pipelinepermissions) && resource.pipelinepermissions.length > 0) ? 'Yes' : 'No';
+      const webUrl = resource?.k_url || '';
+      
+      // Get last used date - different resources may have different fields
+      let lastUsedDate = '';
+      if (resource?.lastUsed) {
+        lastUsedDate = new Date(resource.lastUsed).toLocaleDateString();
+      } else if (resource?.recentlyUsedDate) {
+        lastUsedDate = new Date(resource.recentlyUsedDate).toLocaleDateString();
+      } else if (resource?.createdOn) {
+        lastUsedDate = 'Created: ' + new Date(resource.createdOn).toLocaleDateString();
+      } else if (resource?.creationDate) {
+        lastUsedDate = 'Created: ' + new Date(resource.creationDate).toLocaleDateString();
+      }
+
+      return [
+        escapeCSV(resource?.name || 'Missing Name'),
+        escapeCSV(resourceTypeLabel),
+        escapeCSV(pipelineInfo.count),
+        escapeCSV(pipelineInfo.names.join('; ')),
+        escapeCSV(description),
+        escapeCSV(crossProject),
+        escapeCSV(logicContainerNames),
+        escapeCSV(isProtected),
+        escapeCSV(lastUsedDate),
+        escapeCSV(webUrl)
+      ];
+    });
+
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    const filename = downloadMode === 'all' 
+      ? `resources_${selectedType}_all_${new Date().toISOString().split('T')[0]}.csv`
+      : `resources_${selectedType}_filtered_${new Date().toISOString().split('T')[0]}.csv`;
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <TableContainer
       sx={{
@@ -561,16 +728,44 @@ const ResourceTable = ({ selectedType, filteredProtectedResources, logicContaine
         })
       }}
       component={Paper}>
-      <Typography variant="h6" sx={{ marginTop: 2, alignSelf: 'center', alignContent: 'center', textAlign: 'center', color: "#ee4266" }}>
-        {selectedType === 'pool_merged' ? 'Agent Pools' : getResourceTypeLabel(selectedType)} Resources
-        <Badge
-          badgeContent={filteredBadge}
-          color="primary"
-          sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16 } }}
-        >
-          <FilterAltIcon fontSize="small" sx={{ marginLeft: 1 }} />
-        </Badge>
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, gap: 2 }}>
+        <Typography variant="h6" sx={{ alignSelf: 'center', alignContent: 'center', textAlign: 'center', color: "#ee4266" }}>
+          {selectedType === 'pool_merged' ? 'Agent Pools' : getResourceTypeLabel(selectedType)} Resources
+          <Badge
+            badgeContent={filteredBadge}
+            color="primary"
+            sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16 } }}
+          >
+            <FilterAltIcon fontSize="small" sx={{ marginLeft: 1 }} />
+          </Badge>
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<DownloadIcon />}
+            onClick={downloadCSV}
+            disabled={downloadMode === 'all' ? !allProtectedResources || allProtectedResources.length === 0 : !filteredProtectedResources || filteredProtectedResources.length === 0}
+            sx={{ textTransform: 'none', color: '#ee4266', borderColor: '#ee4266', '&:hover': { borderColor: '#d33a5b' } }}
+          >
+            Download CSV
+          </Button>
+          <ToggleButtonGroup
+            value={downloadMode}
+            exclusive
+            onChange={(e, newMode) => newMode && setDownloadMode(newMode)}
+            size="small"
+            sx={{ height: '32px' }}
+          >
+            <ToggleButton value="filtered" sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}>
+              Filtered ({(filteredProtectedResources || []).length})
+            </ToggleButton>
+            <ToggleButton value="all" sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}>
+              All ({(allProtectedResources || []).length})
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      </Box>
       <Table sx={{ tableLayout: 'fixed', minWidth: 800 }}>
         <TableHead>
           <TableRow>

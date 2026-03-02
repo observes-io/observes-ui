@@ -28,6 +28,9 @@ import {
   Menu,
   Chip,
   Tooltip,
+  CircularProgress,
+  Fade,
+  Backdrop,
 } from "@mui/material";
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -79,10 +82,19 @@ function coerceToPlatformScanResults(data) {
 
 export default function MainGrid({ platformSources, onPlatformSourceSelect }) {
 
-  const { selectedPlatformSource, addPlatformSource, deletePlatformSource, projects, fetchProjects, fetchCommitterStats } = useStore();
+  const { selectedPlatformSource, addPlatformSource, deletePlatformSource, projects, fetchProjects, fetchCommitterStats, fetchPlatformSources, setSelectedPlatformSource } = useStore();
+
+  // Loading state for upload
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
 
   // Modal state for upload warning
   const [showUploadWarning, setShowUploadWarning] = useState(false);
+
+  // Overwrite confirmation dialog state
+  const [showOverwriteDialog, setShowOverwriteDialog] = useState(false);
+  const [overwriteScanData, setOverwriteScanData] = useState(null);
+  const [overwriteInputEl, setOverwriteInputEl] = useState(null);
   const [dontAskAgain, setDontAskAgain] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
 
@@ -115,17 +127,46 @@ export default function MainGrid({ platformSources, onPlatformSourceSelect }) {
       if (inputEl) inputEl.value = "";
       return;
     }
+    setIsUploading(true);
+    setUploadProgress('Reading file...');
     try {
       const text = await file.text();
       let data;
+      setUploadProgress('Validating scan data...');
       try {
         data = coerceToPlatformScanResults(JSON.parse(text));
       } catch (err) {
+        setIsUploading(false);
+        setUploadProgress('');
         alert('Invalid on-demand platform source file: ' + err.message);
         if (inputEl) inputEl.value = "";
         return;
       }
-      await addPlatformSource({
+      // Check for existing scan with same ID
+      if (platformSources.some(ps => ps.id === data.id)) {
+        setIsUploading(false);
+        setUploadProgress('');
+        setOverwriteScanData({
+          id: data.id,
+          scan: { start: data.scan_start, end: data.scan_end },
+          organisation: data.organisation,
+          projects: data.projects,
+          protected_resources: data.protected_resources,
+          build_definitions: data.build_definitions,
+          builds: data.builds,
+          stats: data.stats || {},
+          commits: data.commits || [],
+          committer_stats: data.committer_stats || {},
+          build_service_accounts: data.build_service_accounts || [],
+          artifacts: data.artifacts || [],
+        });
+        setOverwriteInputEl(inputEl);
+        setShowOverwriteDialog(true);
+        return;
+      }
+      // No existing scan, proceed
+      setUploadProgress('Processing platform scan...');
+      const platformSourceData = {
         id: data.id,
         scan: { start: data.scan_start, end: data.scan_end },
         organisation: data.organisation,
@@ -138,11 +179,20 @@ export default function MainGrid({ platformSources, onPlatformSourceSelect }) {
         committer_stats: data.committer_stats || {},
         build_service_accounts: data.build_service_accounts || [],
         artifacts: data.artifacts || [],
-      });
-      window.location.reload();
+      };
+      await addPlatformSource(platformSourceData);
+      setUploadProgress('Refreshing data...');
+      await fetchPlatformSources();
+      setSelectedPlatformSource(platformSourceData);
+      setUploadProgress('Complete!');
+      await new Promise(resolve => setTimeout(resolve, 500));
+      if (inputEl) inputEl.value = "";
     } catch (err) {
       alert('Failed to import on-demand scan: ' + err);
       if (inputEl) inputEl.value = "";
+    } finally {
+      setIsUploading(false);
+      setUploadProgress('');
     }
   };
 
@@ -732,6 +782,126 @@ export default function MainGrid({ platformSources, onPlatformSourceSelect }) {
           </Box>
         </Box>
       )}
+
+      {/* Upload Loading Overlay */}
+      <Backdrop
+        sx={{
+          color: '#fff',
+          zIndex: (theme) => theme.zIndex.modal + 1,
+          backdropFilter: 'blur(4px)',
+        }}
+        open={isUploading || showOverwriteDialog}
+      >
+        {isUploading && (
+          <Fade in={isUploading} timeout={400}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+                p: 4,
+                borderRadius: 3,
+                backgroundColor: 'rgba(102, 126, 234, 0.95)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                minWidth: 280,
+              }}
+            >
+              <CircularProgress 
+                size={56} 
+                sx={{ 
+                  color: 'white',
+                  mb: 3,
+                }} 
+              />
+              <Typography 
+                variant="h5" 
+                sx={{ 
+                  color: 'white',
+                  fontWeight: 500,
+                  mb: 1,
+                }}
+              >
+                Importing Platform Scan
+              </Typography>
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  color: 'rgba(255, 255, 255, 0.9)',
+                }}
+              >
+                {uploadProgress}
+              </Typography>
+            </Box>
+          </Fade>
+        )}
+        {showOverwriteDialog && (
+          <Fade in={showOverwriteDialog} timeout={400}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+                p: 4,
+                borderRadius: 3,
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                minWidth: 320,
+              }}
+            >
+              <Typography variant="h5" sx={{ color: 'black', fontWeight: 600, mb: 2 }}>
+                Overwrite Existing Scan?
+              </Typography>
+              <Typography variant="body1" sx={{ color: 'black', mb: 2 }}>
+                A scan with ID <b>{overwriteScanData?.id}</b> already exists.<br />
+                Uploading will overwrite the existing scan and its data.<br />
+                Are you sure you want to continue?
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                <Button
+                  variant="contained"
+                  color="error"
+                  onClick={async () => {
+                    setShowOverwriteDialog(false);
+                    setIsUploading(true);
+                    setUploadProgress('Overwriting scan...');
+                    await addPlatformSource(overwriteScanData);
+                    setUploadProgress('Refreshing data...');
+                    await fetchPlatformSources();
+                    setSelectedPlatformSource(overwriteScanData);
+                    setUploadProgress('Complete!');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    setIsUploading(false);
+                    setUploadProgress('');
+                    if (overwriteInputEl) overwriteInputEl.value = "";
+                  }}
+                  sx={{ minWidth: 120 }}
+                >
+                  Overwrite
+                </Button>
+                <Button
+                  variant="contained"
+                  color="info"
+                  onClick={() => {
+                    setShowOverwriteDialog(false);
+                    setOverwriteScanData(null);
+                    setOverwriteInputEl(null);
+                    setUploadProgress('');
+                    setIsUploading(false);
+                    if (overwriteInputEl) overwriteInputEl.value = "";
+                  }}
+                  sx={{ minWidth: 120 }}
+                >
+                  Cancel
+                </Button>
+              </Box>
+            </Box>
+          </Fade>
+        )}
+      </Backdrop>
 
     </>
   );

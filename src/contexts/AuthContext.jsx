@@ -8,7 +8,10 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useMsal } from '@azure/msal-react';
 import authService from '../services/authService';
+import { isValidOAuthUrl } from '../utils/urlValidator';
+
 
 const AuthContext = createContext(null);
 
@@ -21,18 +24,35 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isGuestMode, setIsGuestMode] = useState(false);
+  
+  // Get MSAL instance and accounts
+  const { instance, accounts } = useMsal();
 
-  // Check authentication status on mount
+  // Check authentication status on mount and when MSAL accounts change
   useEffect(() => {
     checkAuth();
-  }, []);
+
+    // Listen for session expiration events
+    const handleSessionExpired = () => {
+      setUser(null);
+      setError('Your session has expired. Please log in again.');
+      // Optional: redirect to login
+      // window.location.href = '/';
+    };
+
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+
+    return () => {
+      window.removeEventListener('auth:session-expired', handleSessionExpired);
+    };
+  }, [accounts]);
 
   // Set up token refresh interval
   useEffect(() => {
     if (user) {
       const interval = setInterval(() => {
         refreshAuthToken();
-      }, 5 * 60 * 1000); 
+      }, 5 * 60 * 1000);
 
       return () => clearInterval(interval);
     }
@@ -43,6 +63,42 @@ export const AuthProvider = ({ children }) => {
    */
   const checkAuth = async () => {
     try {
+      // First, check for MSAL authentication
+      const activeAccount = instance.getActiveAccount();
+      if (activeAccount) {
+        // User is authenticated via MSAL
+        setIsGuestMode(false);
+        localStorage.removeItem('guestMode');
+        setUser({
+          email: activeAccount.username || activeAccount.idTokenClaims?.email,
+          name: activeAccount.name || activeAccount.idTokenClaims?.name,
+          tenantId: activeAccount.tenantId,
+          tenantName: 'Microsoft Entra',
+          isGuest: false,
+          msalAccount: activeAccount,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Check if there are any accounts (but none active)
+      if (accounts.length > 0) {
+        instance.setActiveAccount(accounts[0]);
+        const account = accounts[0];
+        setIsGuestMode(false);
+        localStorage.removeItem('guestMode');
+        setUser({
+          email: account.username || account.idTokenClaims?.email,
+          name: account.name || account.idTokenClaims?.name,
+          tenantId: account.tenantId,
+          tenantName: 'Microsoft Entra',
+          isGuest: false,
+          msalAccount: account,
+        });
+        setLoading(false);
+        return;
+      }
+
       // Check if guest mode is enabled
       const guestMode = localStorage.getItem('guestMode') === 'true';
       if (guestMode) {
@@ -58,6 +114,7 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
+      // Check legacy authService authentication
       if (authService.isAuthenticated()) {
         const currentUser = authService.getCurrentUser();
         setUser(currentUser);
@@ -95,7 +152,7 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       return await authService.getTenantProviders(tenantId);
     } catch (error) {
-    //   setError(error.message);
+      //   setError(error.message);
       throw error;
     }
   };
@@ -107,7 +164,12 @@ export const AuthProvider = ({ children }) => {
     try {
       setError(null);
       const authUrl = await authService.startExternalLogin(tenantId, providerName);
-      // Redirect to OAuth provider
+
+      // Validate URL before redirect
+      if (!isValidOAuthUrl(authUrl)) {
+        throw new Error('Invalid OAuth provider URL');
+      }
+
       window.location.href = authUrl;
     } catch (error) {
       setError(error.message);
@@ -122,9 +184,9 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const result = await authService.handleCallback(code, state);
-      
+
       if (result.success) {
         setUser(result.user);
         return result;
@@ -221,9 +283,9 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const result = await authService.loginLocalAccount(tenantId, email, password);
-      
+
       if (result.success) {
         result
         setUser(result.user);

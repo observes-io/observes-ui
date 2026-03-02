@@ -10,7 +10,7 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 import React, { useState } from 'react';
 import {
     Box, Typography, Accordion, AccordionSummary, AccordionDetails,
-    Grid, Card, CardContent, List, ListItem, ListItemText, Badge, Divider, Chip, Tabs, Tab, Table, TableBody, TableRow, TableCell, Button
+    Grid, Card, CardContent, List, ListItem, ListItemText, Badge, Divider, Chip, Tabs, Tab, Table, TableBody, TableRow, TableCell, Button, Link
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import MemoryIcon from '@mui/icons-material/Memory';
@@ -77,75 +77,111 @@ const BranchSection = ({ branch, data }) => {
             {tab === 1 && (
                 <Box>
                     {data?.cicd_sast?.length > 0 ? (
-                        data.cicd_sast.map((alert, idx) => (
-                            <Accordion key={idx} sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }} defaultExpanded>
-                                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                    <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center", width: "100%" }}>
-                                        <Typography sx={{ userSelect: "text", mr: 2 }} variant="h6">{alert.engine}</Typography>
-                                        <Typography sx={{ userSelect: "text", mr: 2 }} variant="body2" color="text.secondary">
-                                            {/* Scope: {alert.scope === "potential_pipeline_execution_yaml" ? "Potential Execution" : "Execution"} */}
-                                            {(() => {
-                                                switch (alert.scope) {
-                                                    case 'pipeline_yaml':
-                                                        return 'Scan of pipeline definition file';
-                                                    case 'pipeline_execution_logs':
-                                                        return 'Scan of execution logs';
-                                                    case 'build_logs':
-                                                        return 'Build logs';
-                                                    default:
-                                                        return 'Build Execution Logs';
-                                                }
-                                            })()}
-                                        </Typography>
-                                        <Chip
-                                            label={`${alert.results?.length || 0} result${alert.results?.length !== 1 ? "s" : ""}`}
-                                            color={alert.results?.length > 0 ? "error" : "success"}
-                                            size="small"
-                                            sx={{ mt: 1, alignSelf: "center" }}
-                                        />
-                                    </Box>
-                                </AccordionSummary>
-                                <AccordionDetails>
-                                    {alert.results?.length > 0 ? (
-                                        alert.results.map((result, rIdx) => (
-                                            <Box
-                                                key={rIdx}
-                                                sx={{
-                                                    mb: 2,
-                                                    p: 2,
-                                                    border: "1px solid #eee",
-                                                    borderRadius: 2,
-                                                    backgroundColor: "#fafafa",
-                                                }}
-                                            >
-                                                <Typography variant="body2">
-                                                    <strong>Source:</strong> {result.source ? (
-                                                        <a href={result.source} target="_blank" rel="noopener noreferrer">{result.source}</a>
-                                                    ) : 'N/A'}
-                                                </Typography>
-                                                <Typography variant="body2">
-                                                    <strong>Match:</strong>{" "}
-                                                    <span style={{ color: "red", fontWeight: 600 }}>{result.match || 'N/A'}</span>
-                                                </Typography>
-                                                <Typography variant="body2">
-                                                    <strong>Pattern:</strong> {result.pattern || 'N/A'}
-                                                </Typography>
-                                                <Typography variant="body2">
-                                                    <strong>Start:</strong> {result.start ?? 'N/A'}, <strong>End:</strong> {result.end ?? 'N/A'}
+                        data.cicd_sast.map((alert, idx) => {
+                            // Group results by category
+                            const groupedByCategory = (alert.results || []).reduce((acc, result) => {
+                                const category = result.category || 'Uncategorized';
+                                if (!acc[category]) {
+                                    acc[category] = {
+                                        description: result.description || '',
+                                        severity: result.severity || '',
+                                        results: []
+                                    };
+                                }
+                                acc[category].results.push(result);
+                                return acc;
+                            }, {});
+
+                            return (
+                                <Accordion key={idx} sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }} defaultExpanded>
+                                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                        <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center", width: "100%" }}>
+                                            <Typography sx={{ userSelect: "text", mr: 2 }} variant="h6">{alert.engine}</Typography>
+                                            <Typography sx={{ userSelect: "text", mr: 2 }} variant="body2" color="text.secondary">
+                                                {(() => {
+                                                    switch (alert.scope) {
+                                                        case 'pipeline_yaml':
+                                                            return 'Scan of pipeline definition file';
+                                                        case 'pipeline_execution_logs':
+                                                            return 'Scan of execution logs';
+                                                        case 'build_logs':
+                                                            return 'Build logs';
+                                                        default:
+                                                            return 'Build Execution Logs';
+                                                    }
+                                                })()}
+                                            </Typography>
+                                            <Chip
+                                                label={`${alert.results?.length || 0} result${alert.results?.length !== 1 ? "s" : ""}`}
+                                                color={alert.results?.length > 0 ? "error" : "success"}
+                                                size="small"
+                                                sx={{ mt: 1, alignSelf: "center" }}
+                                            />
+                                        </Box>
+                                    </AccordionSummary>
+                                    <AccordionDetails>
+                                        {Object.keys(groupedByCategory).length > 0 ? (
+                                            Object.entries(groupedByCategory).map(([category, categoryData], catIdx) => (
+                                                <Box key={catIdx} sx={{ mb: 3 }}>
+                                                    <Box sx={{ mb: 2, p: 2, backgroundColor: '#f0f0f0', borderRadius: 1 }}>
+                                                        <Typography variant="h6" sx={{ mb: 1 }}>
+                                                            {category}
+                                                            {categoryData.severity && (
+                                                                <Chip
+                                                                    label={categoryData.severity}
+                                                                    size="small"
+                                                                    color={categoryData.severity === 'high' ? 'error' : categoryData.severity === 'medium' ? 'warning' : 'default'}
+                                                                    sx={{ ml: 2 }}
+                                                                />
+                                                            )}
+                                                        </Typography>
+                                                        {categoryData.description && (
+                                                            <Typography variant="body2" color="text.secondary">
+                                                                {categoryData.description}
+                                                            </Typography>
+                                                        )}
+                                                    </Box>
+                                                    {categoryData.results.map((result, rIdx) => (
+                                                        <Box
+                                                            key={rIdx}
+                                                            sx={{
+                                                                mb: 2,
+                                                                p: 2,
+                                                                border: "1px solid #eee",
+                                                                borderRadius: 2,
+                                                                backgroundColor: "#fafafa",
+                                                            }}
+                                                        >
+                                                            <Typography variant="body2">
+                                                                <strong>Source:</strong> {result.source ? (
+                                                                    <a href={result.source} target="_blank" rel="noopener noreferrer">{result.source}</a>
+                                                                ) : 'N/A'}
+                                                            </Typography>
+                                                            <Typography variant="body2">
+                                                                <strong>Match:</strong>{" "}
+                                                                <span style={{ color: "red", fontWeight: 600 }}>{result.match || 'N/A'}</span>
+                                                            </Typography>
+                                                            <Typography variant="body2">
+                                                                <strong>Pattern:</strong> {result.pattern || 'N/A'}
+                                                            </Typography>
+                                                            <Typography variant="body2">
+                                                                <strong>Start:</strong> {result.start ?? 'N/A'}, <strong>End:</strong> {result.end ?? 'N/A'}
+                                                            </Typography>
+                                                        </Box>
+                                                    ))}
+                                                </Box>
+                                            ))
+                                        ) : (
+                                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    No alerts triggered.
                                                 </Typography>
                                             </Box>
-                                        ))
-                                    ) : (
-                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                            {/* You can use a success icon here if desired */}
-                                            <Typography variant="body2" color="text.secondary">
-                                                No alerts triggered.
-                                            </Typography>
-                                        </Box>
-                                    )}
-                                </AccordionDetails>
-                            </Accordion>
-                        ))
+                                        )}
+                                    </AccordionDetails>
+                                </Accordion>
+                            );
+                        })
                     ) : (
                         <Typography variant="body2" color="text.secondary">
                             No scan results available.
@@ -178,7 +214,7 @@ const ExecutionSection = ({ build }) => {
             </Tabs>
 
             {tab === 0 && (
-                <>
+                <Box sx={{ width: '100%' }}>
                     <pre style={{
                         background: '#f5f5f5',
                         padding: '10px',
@@ -187,85 +223,123 @@ const ExecutionSection = ({ build }) => {
                         overflowWrap: 'break-word',
                         maxHeight: '300px',
                         overflow: 'auto',
-                        maxWidth: '100%'
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        margin: 0
                     }}>
                         {build?.yaml || 'No YAML available'}
                     </pre>
-                </>
+                </Box>
             )}
 
             {tab === 1 && (
                 <Box>
                     {build?.cicd_sast?.length > 0 ? (
-                        build.cicd_sast.map((alert, idx) => (
-                            <Accordion key={idx} sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }} defaultExpanded>
-                                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                    <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center", width: "100%" }}>
-                                        <Typography sx={{ userSelect: "text", mr: 2 }} variant="h6">{alert.engine}</Typography>
-                                        <Typography sx={{ userSelect: "text", mr: 2 }} variant="body2" color="text.secondary">
-                                            {/* Scope: {alert.scope === "potential_pipeline_execution_yaml" ? "Potential Execution" : "Execution"} */}
-                                            {(() => {
-                                                switch (alert.scope) {
-                                                    case 'pipeline_yaml':
-                                                        return 'Scan of pipeline definition file';
-                                                    case 'pipeline_execution_logs':
-                                                        return 'Scan of execution logs';
-                                                    case 'build_logs':
-                                                        return 'Build logs';
-                                                    default:
-                                                        return 'Build Execution Logs';
-                                                }
-                                            })()}
-                                        </Typography>
-                                        <Chip
-                                            label={`${alert.results?.length || 0} result${alert.results?.length !== 1 ? "s" : ""}`}
-                                            color={alert.results?.length > 0 ? "error" : "success"}
-                                            size="small"
-                                            sx={{ mt: 1, alignSelf: "center" }}
-                                        />
-                                    </Box>
-                                </AccordionSummary>
-                                <AccordionDetails>
-                                    {alert.results?.length > 0 ? (
-                                        alert.results.map((result, rIdx) => (
-                                            <Box
-                                                key={rIdx}
-                                                sx={{
-                                                    mb: 2,
-                                                    p: 2,
-                                                    border: "1px solid #eee",
-                                                    borderRadius: 2,
-                                                    backgroundColor: "#fafafa",
-                                                }}
-                                            >
-                                                <Typography variant="body2">
-                                                    <strong>Source:</strong> {result.source ? (
-                                                        <a href={result.source} target="_blank" rel="noopener noreferrer">{result.source}</a>
-                                                    ) : 'N/A'}
-                                                </Typography>
-                                                <Typography variant="body2">
-                                                    <strong>Match:</strong>{" "}
-                                                    <span style={{ color: "red", fontWeight: 600 }}>{result.match || 'N/A'}</span>
-                                                </Typography>
-                                                <Typography variant="body2">
-                                                    <strong>Pattern:</strong> {result.pattern || 'N/A'}
-                                                </Typography>
-                                                <Typography variant="body2">
-                                                    <strong>Start:</strong> {result.start ?? 'N/A'}, <strong>End:</strong> {result.end ?? 'N/A'}
+                        build.cicd_sast.map((alert, idx) => {
+                            // Group results by category
+                            const groupedByCategory = (alert.results || []).reduce((acc, result) => {
+                                const category = result.category || 'Uncategorized';
+                                if (!acc[category]) {
+                                    acc[category] = {
+                                        description: result.description || '',
+                                        severity: result.severity || '',
+                                        results: []
+                                    };
+                                }
+                                acc[category].results.push(result);
+                                return acc;
+                            }, {});
+
+                            return (
+                                <Accordion key={idx} sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }} defaultExpanded>
+                                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                        <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center", width: "100%" }}>
+                                            <Typography sx={{ userSelect: "text", mr: 2 }} variant="h6">{alert.engine}</Typography>
+                                            <Typography sx={{ userSelect: "text", mr: 2 }} variant="body2" color="text.secondary">
+                                                {(() => {
+                                                    switch (alert.scope) {
+                                                        case 'pipeline_yaml':
+                                                            return 'Scan of pipeline definition file';
+                                                        case 'pipeline_execution_logs':
+                                                            return 'Scan of execution logs';
+                                                        case 'build_logs':
+                                                            return 'Build logs';
+                                                        default:
+                                                            return 'Build Execution Logs';
+                                                    }
+                                                })()}
+                                            </Typography>
+                                            <Chip
+                                                label={`${alert.results?.length || 0} result${alert.results?.length !== 1 ? "s" : ""}`}
+                                                color={alert.results?.length > 0 ? "error" : "success"}
+                                                size="small"
+                                                sx={{ mt: 1, alignSelf: "center" }}
+                                            />
+                                        </Box>
+                                    </AccordionSummary>
+                                    <AccordionDetails>
+                                        {Object.keys(groupedByCategory).length > 0 ? (
+                                            Object.entries(groupedByCategory).map(([category, categoryData], catIdx) => (
+                                                <Box key={catIdx} sx={{ mb: 3 }}>
+                                                    <Box sx={{ mb: 2, p: 2, backgroundColor: '#f0f0f0', borderRadius: 1 }}>
+                                                        <Typography variant="h6" sx={{ mb: 1 }}>
+                                                            {category}
+                                                            {categoryData.severity && (
+                                                                <Chip
+                                                                    label={categoryData.severity}
+                                                                    size="small"
+                                                                    color={categoryData.severity === 'high' ? 'error' : categoryData.severity === 'medium' ? 'warning' : 'default'}
+                                                                    sx={{ ml: 2 }}
+                                                                />
+                                                            )}
+                                                        </Typography>
+                                                        {categoryData.description && (
+                                                            <Typography variant="body2" color="text.secondary">
+                                                                {categoryData.description}
+                                                            </Typography>
+                                                        )}
+                                                    </Box>
+                                                    {categoryData.results.map((result, rIdx) => (
+                                                        <Box
+                                                            key={rIdx}
+                                                            sx={{
+                                                                mb: 2,
+                                                                p: 2,
+                                                                border: "1px solid #eee",
+                                                                borderRadius: 2,
+                                                                backgroundColor: "#fafafa",
+                                                            }}
+                                                        >
+                                                            <Typography variant="body2">
+                                                                <strong>Source:</strong> {result.source ? (
+                                                                    <a href={result.source} target="_blank" rel="noopener noreferrer">{result.source}</a>
+                                                                ) : 'N/A'}
+                                                            </Typography>
+                                                            <Typography variant="body2">
+                                                                <strong>Match:</strong>{" "}
+                                                                <span style={{ color: "red", fontWeight: 600 }}>{result.match || 'N/A'}</span>
+                                                            </Typography>
+                                                            <Typography variant="body2">
+                                                                <strong>Pattern:</strong> {result.pattern || 'N/A'}
+                                                            </Typography>
+                                                            <Typography variant="body2">
+                                                                <strong>Start:</strong> {result.start ?? 'N/A'}, <strong>End:</strong> {result.end ?? 'N/A'}
+                                                            </Typography>
+                                                        </Box>
+                                                    ))}
+                                                </Box>
+                                            ))
+                                        ) : (
+                                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    No alerts triggered.
                                                 </Typography>
                                             </Box>
-                                        ))
-                                    ) : (
-                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                            {/* You can use a success icon here if desired */}
-                                            <Typography variant="body2" color="text.secondary">
-                                                No alerts triggered.
-                                            </Typography>
-                                        </Box>
-                                    )}
-                                </AccordionDetails>
-                            </Accordion>
-                        ))
+                                        )}
+                                    </AccordionDetails>
+                                </Accordion>
+                            );
+                        })
                     ) : (
                         <Typography variant="body2" color="text.secondary">
                             No scan results available.
@@ -305,7 +379,28 @@ const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKe
 
     return (
         <Box p={2}>
-            <Card sx={{ mb: 2, backgroundColor: 'white', alignItems: 'center', display: 'flex', flexDirection: 'column' }}>
+            {/* Pipeline Name Header */}
+            <Box sx={{ mb: 3 }}>
+                <Typography variant="h4" component="h1" gutterBottom>
+                    <Link 
+                        href={pipeline._links?.web?.href} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        underline="hover"
+                        sx={{ 
+                            color: 'primary.main',
+                            fontWeight: 500,
+                            '&:hover': {
+                                color: 'primary.dark'
+                            }
+                        }}
+                    >
+                        {pipeline.name}
+                    </Link>
+                </Typography>
+            </Box>
+
+            <Card sx={{ mb: 2, backgroundColor: 'white', alignItems: 'flex-start', flexDirection: 'column', width: '100%' }}>
                 <CardContent>
                     <Grid container spacing={2}>
                         <Grid sx={{ display: 'flex', alignItems: 'center' }}>
@@ -439,33 +534,42 @@ const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKe
                     {showPreviewExecutions && (
                         <Box>
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                                <Button onClick={handlePreviousBranch} disabled={branchOptions.length <= 1}>
+                                <Button onClick={handlePreviousBranch} disabled={branchOptions.length <= 1} sx={{ minWidth: 36, width: 36 }}>
                                     <ArrowBackIosIcon />
                                 </Button>
-                                <Box sx={{ textAlign: 'center' }}>
-                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                                        {branchOptions.map((branch, index) => {
-                                            const hasScanResults = pipeline.builds.preview[branch]?.cicd_sast?.some(scan => scan.results?.length > 0);
-                                            return (
-                                                <span
-                                                    key={branch}
-                                                    style={{
-                                                        marginRight: '8px',
-                                                        color: index === selectedExecutionIndex ? (hasScanResults ? 'red' : 'black') : (hasScanResults ? '#b32400' : 'grey'),
-                                                        fontWeight: index === selectedBranchIndex ? 'bold' : 'normal',
-                                                        fontSize: index === selectedBranchIndex ? '0.9rem' : '0.85rem',
-                                                        border: '1px solid lightgrey',
-                                                        borderRadius: '4px',
-                                                        padding: '2px 6px',
-                                                    }}
-                                                >
-                                                    {branch}
-                                                </span>
-                                            );
-                                        })}
-                                    </Typography>
+                                <Box sx={{ textAlign: 'center', display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+                                    {branchOptions.map((branch, index) => {
+                                        const hasScanResults = pipeline.builds.preview[branch]?.cicd_sast?.some(scan => scan.results?.length > 0);
+                                        return (
+                                            <Button
+                                                key={branch}
+                                                onClick={() => setSelectedBranchIndex(index)}
+                                                variant={index === selectedBranchIndex ? 'contained' : 'outlined'}
+                                                color={hasScanResults ? 'error' : (index === selectedBranchIndex ? 'primary' : 'inherit')}
+                                                sx={{
+                                                    width: 110,
+                                                    height: 46,
+                                                    marginRight: 1,
+                                                    fontWeight: index === selectedBranchIndex ? 'bold' : 'normal',
+                                                    fontSize: index === selectedBranchIndex ? '0.9rem' : '0.85rem',
+                                                    border: '1px solid lightgrey',
+                                                    borderRadius: '4px',
+                                                    padding: '2px 6px',
+                                                    color: index === selectedBranchIndex ? (hasScanResults ? 'white' : 'black') : (hasScanResults ? '#b32400' : 'grey'),
+                                                    backgroundColor: index === selectedBranchIndex ? (hasScanResults ? '#d32f2f' : '#e3e3e3') : 'white',
+                                                    boxShadow: index === selectedBranchIndex ? 2 : 0,
+                                                    transition: 'background 0.2s, color 0.2s',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                }}
+                                                title={branch}
+                                            >
+                                                <span style={{ width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', textAlign: 'center' }}>{branch}</span>
+                                            </Button>
+                                        );
+                                    })}
                                 </Box>
-                                <Button onClick={handleNextBranch} disabled={branchOptions.length <= 1}>
+                                <Button onClick={handleNextBranch} disabled={branchOptions.length <= 1} sx={{ minWidth: 36, width: 36 }}>
                                     <ArrowForwardIosIcon />
                                 </Button>
                             </Box>
@@ -497,29 +601,39 @@ const PipelineDetail = ({ pipeline, builds, filteredResourcesTypes_Ids, formatKe
                                         <ArrowBackIosIcon />
                                     </Button>
                                     <Box sx={{ textAlign: 'center' }}>
-                                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', mt: 1, flexWrap: 'wrap' }}>
                                             {pipeline.builds.builds.map((buildId, index) => {
                                                 const build = Array.isArray(builds) ? builds.find(b => b?.id == buildId) : Object.values(builds).find(b => b?.id === buildId);
                                                 const hasScanResults = build?.cicd_sast?.some(scan => scan.results?.length > 0);
-
                                                 return (
-                                                    <span
+                                                    <Button
                                                         key={buildId}
-                                                        style={{
-                                                            marginRight: '8px',
-                                                            color: index === selectedExecutionIndex ? (hasScanResults ? 'red' : 'black') : (hasScanResults ? '#b32400' : 'grey'),
+                                                        onClick={() => setSelectedExecutionIndex(index)}
+                                                        variant={index === selectedExecutionIndex ? 'contained' : 'outlined'}
+                                                        color={hasScanResults ? 'error' : (index === selectedExecutionIndex ? 'primary' : 'inherit')}
+                                                        sx={{
+                                                            width: 110,
+                                                            height: 46,
+                                                            marginRight: 1,
                                                             fontWeight: index === selectedExecutionIndex ? 'bold' : 'normal',
                                                             fontSize: index === selectedExecutionIndex ? '0.9rem' : '0.85rem',
                                                             border: '1px solid lightgrey',
                                                             borderRadius: '4px',
                                                             padding: '2px 6px',
+                                                            color: index === selectedExecutionIndex ? (hasScanResults ? 'white' : 'black') : (hasScanResults ? '#b32400' : 'grey'),
+                                                            backgroundColor: index === selectedExecutionIndex ? (hasScanResults ? '#d32f2f' : '#e3e3e3') : 'white',
+                                                            boxShadow: index === selectedExecutionIndex ? 2 : 0,
+                                                            transition: 'background 0.2s, color 0.2s',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
                                                         }}
+                                                        title={build && build['buildNumber'] || 'Execution (Does not match filter)'}
                                                     >
-                                                        {build && build['buildNumber'] || 'Execution (Does not match filter)'}
-                                                    </span>
+                                                        <span style={{ width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', textAlign: 'center' }}>{build && build['buildNumber'] || 'Execution (Does not match filter)'}</span>
+                                                    </Button>
                                                 );
                                             })}
-                                        </Typography>
+                                        </Box>
                                     </Box>
                                     <Button onClick={handleNextExecution} disabled={pipeline.builds.builds.length <= 1}>
                                         <ArrowForwardIosIcon />

@@ -147,6 +147,7 @@ export interface SavedSearch {
         filterForUnqueriablePipelines?: boolean;
         filterForDisabledPipelines?: boolean;
         selectedProject?: string;
+        filterForHistoricUnauthorizedServiceConnection?: boolean;
     };
     createdAt: string;
     updatedAt?: string;
@@ -320,6 +321,15 @@ interface StoreState {
     getProtectedResourcesByOrgTypeAndIdsSummary: (orgId: string, resourceType: string, resourceIds: string[]) => Promise<any[]>;
 
     fetchProtectedResourcesByTypeOrgProject: (orgId: string, resourceType: string, projectId: string) => Promise<{ resources: any[], total: number }>;
+    
+    fetchResourcesForPipelines: (orgId: string, pipelines: any[]) => Promise<{
+        endpoints: any[],
+        variableGroups: any[],
+        repositories: any[],
+        pools: any[],
+        secureFiles: any[],
+        environments: any[]
+    }>;
 }
 
 const getDefaultDateFormat = () => {
@@ -600,10 +610,10 @@ const useStore = create<StoreState>((set) => ({
         type = type.toLowerCase();
         if (knownResourceTypes.includes(type)) {
             // If type is known, fetch resources by type
-            const allResources = await getAllRecords('protected_resources', 'byOrgAndType', [platformSourceId, type]);
+        const allResources = await getAllRecords('protected_resources', 'byOrgAndType', [platformSourceId, type]);
             if (allResources.length === 0) {
                 // If no resources found, return empty array
-                console.warn(`No resources found for type: ${type} in platformSourceId: ${platformSourceId}`);
+                console.log(`No resources found for type: ${type} in platformSourceId: ${platformSourceId}`);
                 return [];
             }
             // If resources found, return them as the correct type
@@ -1224,6 +1234,88 @@ const useStore = create<StoreState>((set) => ({
         );
         const total = filtered.length;
         return { resources: filtered, total };
+    },
+
+    /**
+     * Fetch resources for a specific list of pipelines
+     * This method collects all resource IDs from the pipelines' resourcepermissions
+     * and fetches only those specific resources from IndexedDB
+     * @param {string} orgId - The ID of the organisation
+     * @param {any[]} pipelines - Array of pipeline objects containing resourcepermissions
+     * @returns {Promise<object>} Object containing arrays of resources by type
+     */
+    fetchResourcesForPipelines: async (orgId: string, pipelines: any[]) => {
+        // Collect all unique resource IDs by type from pipeline permissions
+        const resourceIdsByType: Record<string, Set<string>> = {
+            endpoint: new Set(),
+            variablegroup: new Set(),
+            repository: new Set(),
+            pool_merged: new Set(),
+            securefile: new Set(),
+            environment: new Set()
+        };
+
+        // Gather resource IDs from all pipelines
+        pipelines.forEach(pipeline => {
+            if (pipeline.resourcepermissions) {
+                Object.keys(pipeline.resourcepermissions).forEach(resourceType => {
+                    const normalizedType = resourceType.toLowerCase();
+                    if (resourceIdsByType[normalizedType]) {
+                        pipeline.resourcepermissions[resourceType].forEach((resourceId: string) => {
+                            resourceIdsByType[normalizedType].add(String(resourceId));
+                        });
+                    }
+                });
+            }
+        });
+
+        // Fetch resources for each type
+        const results: any = {
+            endpoints: [],
+            variableGroups: [],
+            repositories: [],
+            pools: [],
+            secureFiles: [],
+            environments: []
+        };
+
+        // Fetch endpoints
+        if (resourceIdsByType.endpoint.size > 0) {
+            const allEndpoints = await getAllRecords('protected_resources', 'byOrgAndResourceType', [orgId, 'endpoint']);
+            results.endpoints = allEndpoints.filter((r: any) => resourceIdsByType.endpoint.has(String(r.id)));
+        }
+
+        // Fetch variable groups
+        if (resourceIdsByType.variablegroup.size > 0) {
+            const allVarGroups = await getAllRecords('protected_resources', 'byOrgAndResourceType', [orgId, 'variablegroup']);
+            results.variableGroups = allVarGroups.filter((r: any) => resourceIdsByType.variablegroup.has(String(r.id)));
+        }
+
+        // Fetch repositories
+        if (resourceIdsByType.repository.size > 0) {
+            const allRepos = await getAllRecords('protected_resources', 'byOrgAndResourceType', [orgId, 'repository']);
+            results.repositories = allRepos.filter((r: any) => resourceIdsByType.repository.has(String(r.id)));
+        }
+
+        // Fetch pools (note: stored as 'pools' in database, not 'pool_merged')
+        if (resourceIdsByType.pool_merged.size > 0) {
+            const allPools = await getAllRecords('protected_resources', 'byOrgAndResourceType', [orgId, 'pools']);
+            results.pools = allPools.filter((r: any) => resourceIdsByType.pool_merged.has(String(r.id)));
+        }
+
+        // Fetch secure files
+        if (resourceIdsByType.securefile.size > 0) {
+            const allSecureFiles = await getAllRecords('protected_resources', 'byOrgAndResourceType', [orgId, 'securefile']);
+            results.secureFiles = allSecureFiles.filter((r: any) => resourceIdsByType.securefile.has(String(r.id)));
+        }
+
+        // Fetch environments
+        if (resourceIdsByType.environment.size > 0) {
+            const allEnvironments = await getAllRecords('protected_resources', 'byOrgAndResourceType', [orgId, 'environment']);
+            results.environments = allEnvironments.filter((r: any) => resourceIdsByType.environment.has(String(r.id)));
+        }
+
+        return results;
     },
 
     /**

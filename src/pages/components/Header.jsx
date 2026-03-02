@@ -8,6 +8,7 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 */
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useMsal } from '@azure/msal-react';
 import useStore from '../../state/stores/store';
 import observesLogo from '../theme/Observes-logoonly-giant.png';
 
@@ -28,6 +29,7 @@ import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import { useAuth } from '../../contexts/AuthContext';
 import ContactMailIcon from '@mui/icons-material/ContactMail';
 import LoginIcon from '@mui/icons-material/Login';
+import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 
 
 const ListItemAvatar = styled(MuiListItemAvatar)({
@@ -42,6 +44,17 @@ export default function Header({ onMenuItemClick, mainListItems }) {
   // dont use platformSources, use a list of orgs
   const { current_page, platformSources, selectedPlatformSource, selectedProject, setCurrentPage, fetchPlatformSources, setSelectedPlatformSource, setSelectedProject, globalSettings } = useStore();
   const { user, logout, isGuestMode, exitGuestMode } = useAuth();
+  
+  // useMsal() might not be available if OAuth is not configured
+  let instance = null;
+  try {
+    const msalContext = useMsal();
+    instance = msalContext.instance;
+  } catch (error) {
+    // MSAL not available - OAuth not configured
+    console.debug('[Header] MSAL not available - OAuth not configured');
+  }
+  
   const navigate = useNavigate();
   // const { mode, systemMode } = useColorScheme();
 
@@ -74,8 +87,21 @@ export default function Header({ onMenuItemClick, mainListItems }) {
 
   const handleLogout = () => {
     handleCloseUserMenu();
+    // Clear local auth state
     logout();
-    navigate('/login', { replace: true });
+    // MSAL logout - redirects to post-logout URI (if MSAL is configured)
+    if (instance) {
+      instance.logoutRedirect({
+        postLogoutRedirectUri: '/login',
+      }).catch((error) => {
+        console.error('Logout error:', error);
+        // Fallback to navigation if MSAL logout fails
+        navigate('/login', { replace: true });
+      });
+    } else {
+      // No MSAL instance, just navigate to login
+      navigate('/login', { replace: true });
+    }
   };
 
   const handleContactUs = async () => {
@@ -88,8 +114,9 @@ export default function Header({ onMenuItemClick, mainListItems }) {
     }
   };
 
-  const handleBackToLogin = () => {
+  const handleExitGuestMode = () => {
     handleCloseUserMenu();
+    exitGuestMode();
     navigate('/login');
   };
 
@@ -424,11 +451,11 @@ export default function Header({ onMenuItemClick, mainListItems }) {
               <Divider />
               {isGuestMode && (
                 <>
-                  <MenuItem onClick={handleBackToLogin}>
+                  <MenuItem onClick={handleExitGuestMode}>
                     <ListItemIcon>
-                      <LoginIcon fontSize="small" />
+                      <ExitToAppIcon fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText>Back to Login</ListItemText>
+                    <ListItemText>Exit Guest Mode</ListItemText>
                   </MenuItem>
                   <MenuItem onClick={handleContactUs}>
                     <ListItemIcon>

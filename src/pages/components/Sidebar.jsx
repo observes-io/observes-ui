@@ -26,6 +26,7 @@ import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import { useAuth } from '../../contexts/AuthContext';
 import ContactMailIcon from '@mui/icons-material/ContactMail';
 import LoginIcon from '@mui/icons-material/Login';
+import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 
 const ListItemAvatar = styled(MuiListItemAvatar)({
   minWidth: 0,
@@ -91,8 +92,9 @@ export default function Sidebar({ onMenuItemClick, mainListItems }) {
     }
   };
 
-  const handleBackToLogin = () => {
+  const handleExitGuestMode = () => {
     handleCloseUserMenu();
+    exitGuestMode();
     navigate('/login');
   };
 
@@ -397,11 +399,11 @@ export default function Sidebar({ onMenuItemClick, mainListItems }) {
             <Divider />
             {isGuestMode && (
               <>
-                <MenuItem onClick={handleBackToLogin}>
+                <MenuItem onClick={handleExitGuestMode}>
                   <ListItemIcon>
-                    <LoginIcon fontSize="small" />
+                    <ExitToAppIcon fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText>Back to Login</ListItemText>
+                  <ListItemText>Exit Guest Mode</ListItemText>
                 </MenuItem>
                 <MenuItem onClick={handleContactUs}>
                   <ListItemIcon>

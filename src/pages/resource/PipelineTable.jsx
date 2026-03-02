@@ -30,8 +30,12 @@ import {
     Accordion, AccordionSummary, AccordionDetails,
     Tab,
     TablePagination,
-    Link
+    Link,
+    Button,
+    ToggleButton,
+    ToggleButtonGroup
 } from '@mui/material';
+import DownloadIcon from '@mui/icons-material/Download';
 import { KeyboardArrowDown, KeyboardArrowUp, ErrorOutline } from '@mui/icons-material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import * as d3 from 'd3';
@@ -85,12 +89,23 @@ const formatKey = (key) => {
 
 
 
-const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filteredResourcesTypes_Ids, builds, repositories, variableGroups, secureFiles, pools, endpoints, resourceTypeSelected, setResourceTypeSelected, getProtectedResourcesByOrgTypeAndIdsSummary, selectedPlatformSource }) => {
+const PipelineTable = ({ filteredPipelines, allPipelines, filterFocus, filteredBadge, filteredResourcesTypes_Ids, builds, repositories, variableGroups, secureFiles, pools, endpoints, resourceTypeSelected, setResourceTypeSelected, getProtectedResourcesByOrgTypeAndIdsSummary, selectedPlatformSource, fetchResources }) => {
     const [openRows, setOpenRows] = useState({});
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [highlightedPipelines, setHighlightedPipelines] = useState(new Set());
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [downloadMode, setDownloadMode] = useState('filtered'); // 'filtered' or 'all'
+    
+    // State to hold all resource types for CSV export
+    const [allResources, setAllResources] = useState({
+        endpoints: endpoints || [],
+        variableGroups: variableGroups || [],
+        secureFiles: secureFiles || [],
+        repositories: repositories || [],
+        pools: pools || []
+    });
 
 
 
@@ -101,6 +116,18 @@ const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filtered
             setLoading(false);
         }
     }, [filteredPipelines]);
+
+    // Update allResources when individual resource props change
+    useEffect(() => {
+        setAllResources(prev => ({
+            ...prev,
+            endpoints: endpoints || prev.endpoints,
+            variableGroups: variableGroups || prev.variableGroups,
+            secureFiles: secureFiles || prev.secureFiles,
+            repositories: repositories || prev.repositories,
+            pools: pools || prev.pools
+        }));
+    }, [endpoints, variableGroups, secureFiles, repositories, pools]);
 
     useEffect(() => {
         if (!filteredPipelines) return;
@@ -134,7 +161,220 @@ const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filtered
         setPage(0);
     };
 
+    // Helper function to escape CSV values
+    const escapeCSV = (value) => {
+        if (value === null || value === undefined) return '';
+        const stringValue = String(value);
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+    };
 
+    // Get builds for a specific pipeline
+    const getPipelineBuilds = (pipelineId) => {
+        if (!builds || !Array.isArray(builds)) return [];
+        return builds.filter(build => String(build.definition?.id) === String(pipelineId));
+    };
+
+    // Count builds with alerts for a pipeline
+    const countBuildsWithAlerts = (pipelineId) => {
+        const pipelineBuilds = getPipelineBuilds(pipelineId);
+        return pipelineBuilds.filter(build => {
+            return Array.isArray(build.cicd_sast) && 
+                   build.cicd_sast.some(alert => Array.isArray(alert.results) && alert.results.length > 0);
+        }).length;
+    };
+
+    // Get alert categories for a pipeline
+    const getAlertCategories = (pipelineId) => {
+        const pipelineBuilds = getPipelineBuilds(pipelineId);
+        const categories = new Set();
+        
+        pipelineBuilds.forEach(build => {
+            if (Array.isArray(build.cicd_sast)) {
+                build.cicd_sast.forEach(alert => {
+                    if (Array.isArray(alert.results) && alert.results.length > 0) {
+                        alert.results.forEach(result => {
+                            if (result.category) {
+                                categories.add(result.category);
+                            }
+                        });
+                    }
+                });
+            }
+        });
+        
+        return Array.from(categories).sort();
+    };
+
+    // Load all resource types for complete CSV data
+    const loadAllResourceTypes = async () => {
+        if (!selectedPlatformSource || !fetchResources) {
+            console.error('Missing selectedPlatformSource or fetchResources function');
+            return null;
+        }
+
+        try {
+            const [endpointsData, variableGroupsData, secureFilesData, repositoriesData, poolsData] = await Promise.all([
+                fetchResources(selectedPlatformSource.id, 'endpoint'),
+                fetchResources(selectedPlatformSource.id, 'variablegroup'),
+                fetchResources(selectedPlatformSource.id, 'securefile'),
+                fetchResources(selectedPlatformSource.id, 'repository'),
+                fetchResources(selectedPlatformSource.id, 'pool_merged')
+            ]);
+
+            const resourceData = {
+                endpoints: endpointsData || [],
+                variableGroups: variableGroupsData || [],
+                secureFiles: secureFilesData || [],
+                repositories: repositoriesData || [],
+                pools: poolsData || []
+            };
+
+            setAllResources(resourceData);
+            return resourceData;
+        } catch (error) {
+            console.error('Error loading resources for CSV:', error);
+            return null;
+        }
+    };
+
+    // Get resource names for a specific type
+    const getResourceNames = (resourceType, resourceIds, resourceData) => {
+        if (!resourceIds || resourceIds.length === 0) return [];
+        
+        let resourceList = [];
+        switch (resourceType.toLowerCase()) {
+            case 'endpoint':
+                resourceList = resourceData.endpoints || [];
+                break;
+            case 'variablegroup':
+                resourceList = resourceData.variableGroups || [];
+                break;
+            case 'securefile':
+                resourceList = resourceData.secureFiles || [];
+                break;
+            case 'repository':
+                resourceList = resourceData.repositories || [];
+                break;
+            case 'pool_merged':
+                resourceList = resourceData.pools || [];
+                break;
+            default:
+                return [];
+        }
+
+        return resourceIds.map(id => {
+            const resource = resourceList.find(r => String(r.id) === String(id));
+            return resource ? resource.name : `Unknown (ID: ${id})`;
+        });
+    };
+
+    // Download CSV function
+    const downloadCSV = async () => {
+        const pipelinesToExport = downloadMode === 'all' ? allPipelines : filteredPipelines;
+        
+        if (!pipelinesToExport || Object.keys(pipelinesToExport).length === 0) {
+            return;
+        }
+
+        setIsDownloading(true);
+
+        // Load all resource types to ensure complete data
+        const loadedResources = await loadAllResourceTypes();
+        
+        if (!loadedResources) {
+            console.error('Failed to load resources');
+            setIsDownloading(false);
+            return;
+        }
+
+        const resourceTypes = ['endpoint', 'variablegroup', 'securefile', 'repository', 'pool_merged'];
+        
+        // CSV Headers
+        const headers = [
+            'Pipeline Name',
+            'Number of Builds',
+            'Number of Builds with Alerts',
+            'Alert Types/Categories',
+            // Resource count columns
+            'Service Connections Count',
+            'Variable Groups Count',
+            'Secure Files Count',
+            'Repositories Count',
+            'Agent Pools Count',
+            // Resource name columns
+            'Service Connections',
+            'Variable Groups',
+            'Secure Files',
+            'Repositories',
+            'Agent Pools',
+            'Web URL'
+        ];
+
+        // Generate CSV rows
+        const rows = Object.values(pipelinesToExport).map(pipeline => {
+            const pipelineName = pipeline.name || 'Unknown';
+            const webUrl = pipeline._links?.web?.href || '';
+            const pipelineBuilds = getPipelineBuilds(pipeline.id);
+            const buildsCount = pipelineBuilds.length;
+            const buildsWithAlertsCount = countBuildsWithAlerts(pipeline.id);
+            const alertCategories = getAlertCategories(pipeline.id);
+
+            // Get resource permissions
+            const resourcePermissions = pipeline.resourcepermissions || {};
+            
+            const row = [
+                escapeCSV(pipelineName),
+                escapeCSV(buildsCount),
+                escapeCSV(buildsWithAlertsCount),
+                escapeCSV(alertCategories.join('; '))
+            ];
+
+            // Add resource counts
+            resourceTypes.forEach(type => {
+                const resourceIds = resourcePermissions[type] || [];
+                row.push(escapeCSV(resourceIds.length));
+            });
+
+            // Add resource names using loaded resources directly
+            resourceTypes.forEach(type => {
+                const resourceIds = resourcePermissions[type] || [];
+                const names = getResourceNames(type, resourceIds, loadedResources);
+                row.push(escapeCSV(names.join('; ')));
+            });
+
+            // Add web URL as last column
+            row.push(escapeCSV(webUrl));
+
+            return row;
+        });
+
+        // Combine headers and rows
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.join(','))
+        ].join('\n');
+
+        // Create blob and download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        link.setAttribute('href', url);
+        const filename = downloadMode === 'all' 
+            ? `pipelines_all_${new Date().toISOString().split('T')[0]}.csv`
+            : `pipelines_filtered_${new Date().toISOString().split('T')[0]}.csv`;
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        setIsDownloading(false);
+    };
 
     return (
         <TableContainer
@@ -149,26 +389,52 @@ const PipelineTable = ({ filteredPipelines, filterFocus, filteredBadge, filtered
             }}
             component={Paper}
         >
-            <Typography
-                variant="h6"
-                sx={{
-                    mt: 3,
-                    mb: 2,
-                    alignSelf: "center",
-                    alignContent: "center",
-                    textAlign: "center",
-                    color: '#3C4EC3'
-                }}
-            >
-                Pipelines
-                <Badge
-                    badgeContent={filteredBadge}
-                    color="primary"
-                    sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16 } }}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 3, marginBottom: 2, gap: 2 }}>
+                <Typography
+                    variant="h6"
+                    sx={{
+                        alignSelf: "center",
+                        alignContent: "center",
+                        textAlign: "center",
+                        color: '#3C4EC3'
+                    }}
                 >
-                    <FilterAltIcon fontSize="small" sx={{ marginLeft: 1 }} />
-                </Badge>
-            </Typography>
+                    Pipelines
+                    <Badge
+                        badgeContent={filteredBadge}
+                        color="primary"
+                        sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16 } }}
+                    >
+                        <FilterAltIcon fontSize="small" sx={{ marginLeft: 1 }} />
+                    </Badge>
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<DownloadIcon />}
+                        onClick={downloadCSV}
+                        disabled={isDownloading || (downloadMode === 'all' ? !allPipelines || Object.keys(allPipelines).length === 0 : !filteredPipelines || Object.keys(filteredPipelines).length === 0)}
+                        sx={{ textTransform: 'none', color: '#3C4EC3', borderColor: '#3C4EC3', '&:hover': { borderColor: '#2b3991' } }}
+                    >
+                        {isDownloading ? 'Loading Data...' : 'Download CSV'}
+                    </Button>
+                    <ToggleButtonGroup
+                        value={downloadMode}
+                        exclusive
+                        onChange={(e, newMode) => newMode && setDownloadMode(newMode)}
+                        size="small"
+                        sx={{ height: '32px' }}
+                    >
+                        <ToggleButton value="filtered" sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}>
+                            Filtered ({Object.keys(filteredPipelines || {}).length})
+                        </ToggleButton>
+                        <ToggleButton value="all" sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}>
+                            All ({Object.keys(allPipelines || {}).length})
+                        </ToggleButton>
+                    </ToggleButtonGroup>
+                </Box>
+            </Box>
             <Table aria-label="collapsible table">
                 <TableHead>
                     <TableRow>

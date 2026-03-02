@@ -13,7 +13,28 @@ import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 
 export default defineConfig({
-  plugins: [react(), basicSsl()],
+  plugins: [react(), basicSsl(), {
+    name: 'security-headers',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+        res.setHeader('X-XSS-Protection', '1; mode=block');
+        res.setHeader(
+          'Content-Security-Policy',
+          "default-src 'self'; " +
+          "script-src 'self' 'unsafe-inline'; " +
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+          "img-src 'self' data: https:; " +
+          "font-src 'self' data: https://fonts.gstatic.com; " +
+          "connect-src 'self' https://login.microsoftonline.com https://*.microsoftonline.com https://api.github.com https://raw.githubusercontent.com " + (process.env.VITE_API_URL || 'https://localhost:3000') + "; " +
+          "frame-ancestors 'none';"
+        );
+        next();
+      });
+    },
+  }],
   base: './', // ✅ relative paths instead of `/assets/...`
   build: {
     outDir: 'dist', // where final build goes

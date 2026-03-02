@@ -16,10 +16,22 @@ import OAuthCallback from './pages/auth/OAuthCallback';
 import ProtectedRoute from './pages/components/licenses/ProtectedRoute';
 import { AppStartup } from './AppStartup';
 import { AuthProvider } from './contexts/AuthContext';
+import { AuthBootstrap } from './auth';
 
+/**
+ * Main Application Component
+ * 
+ * Authentication is now dynamically initialized by AuthBootstrap:
+ * 1. AuthBootstrap loads configuration from runtime endpoint or global config
+ * 2. MSAL is initialized with the loaded configuration
+ * 3. MsalProvider is wrapped internally by AuthBootstrap
+ * 
+ * No hardcoded authentication values are used.
+ */
 function App() {
   return (
-    <AuthProvider>
+    <AuthBootstrap>
+      <AuthProvider>
         <AppStartup>
           <AppTheme>
             <CssBaseline enableColorScheme />
@@ -37,7 +49,8 @@ function App() {
             </Routes>
           </AppTheme>
         </AppStartup>
-    </AuthProvider>
+      </AuthProvider>
+    </AuthBootstrap>
   );
 }
 

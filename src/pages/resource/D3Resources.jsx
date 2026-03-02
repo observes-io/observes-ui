@@ -10,7 +10,7 @@ Internal use only; additional clarifications in LICENSE-CLARIFICATIONS.md
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import PropTypes, { func } from 'prop-types';
-import { Typography, Stack, TableContainer, FormControlLabel, Switch, Table, Paper, TableHead, TableRow, TableCell, TableBody, Tabs, Tab, Box, Dialog, DialogActions, DialogContent, Link, DialogTitle, Slide, Button, List, ListItem, ListItemText, ownerDocument } from '@mui/material';
+import { Typography, Stack, TableContainer, FormControlLabel, Switch, Table, Paper, TableHead, TableRow, TableCell, TableBody, Tabs, Tab, Box, Dialog, DialogActions, DialogContent, Link, DialogTitle, Slide, Button, List, ListItem, ListItemText, ownerDocument, Autocomplete, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DownloadIcon from '@mui/icons-material/Download';
 import ImageIcon from '@mui/icons-material/Image';
@@ -25,6 +25,8 @@ import InfoOutlineIcon from '@mui/icons-material/InfoOutline';
 import { Accordion, AccordionSummary, AccordionDetails, Chip } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ResourceSummary from './ResourceSummary';
+import DOMPurify from 'dompurify';
+import useStore from '../../state/stores/store';
 
 const excludedHueRange = [30, 360]; // Exclude hues from orange to red
 const isColorInExcludedRange = (hexColor) => {
@@ -115,7 +117,7 @@ const legendItems = [
     },
 ];
 
-const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipelines, logic_containers, projects, repositories, endpoints, secureFiles, pools, variableGroups, resourceTypeSelected, setResourceTypeSelected, getProtectedResourcesByOrgTypeAndIdsSummary, selectedPlatformSource }) => {
+const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipelines, selectedPipelinesFilter, logic_containers, projects, repositories, endpoints, secureFiles, pools, variableGroups, resourceTypeSelected, setResourceTypeSelected, getProtectedResourcesByOrgTypeAndIdsSummary, selectedPlatformSource, viewMode, setViewMode, resourceFilters }) => {
     const svgRef = useRef();
     const containerRef = useRef(); // Reference to measure container dimensions
     const zoomTransformRef = useRef(null); // Store zoom transform state
@@ -127,6 +129,10 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
     const [showAllQueues, setShowAllQueues] = useState(false);
     const [loading, setLoading] = useState(true); // Add loading state
     const [dimensions, setDimensions] = useState({ width: 1500, height: 1500 });
+    const [pipelineResources, setPipelineResources] = useState(null); // Resources fetched for selected pipelines
+    
+    // Get store method for fetching resources
+    const fetchResourcesForPipelines = useStore(state => state.fetchResourcesForPipelines);
 
     const handleToggleQueues = () => {
         setShowAllQueues(!showAllQueues);
@@ -135,6 +141,187 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
     if (!filteredProtectedResources || pipelines === 0 || !projects) {
         return <CircularProgress />; // Show loading spinner while data is being fetched
     }
+    
+    // Fetch resources when in pipeline view with selected pipelines (max 10)
+    // Utility: Find pipelines where a build used a service connection but the pipeline no longer has permission
+    function getPipelinesWithHistoricUnauthorizedServiceConnectionUsage(pipelines, builds) {
+        return pipelines.filter(pipeline => {
+            // Get all historic builds for this pipeline
+            let historic_build_ids = pipeline.builds?.builds;
+            if (!Array.isArray(historic_build_ids) || !builds || !Array.isArray(builds)) return false;
+            const historic_builds = builds.filter(b => historic_build_ids.includes(String(b.id)));
+            // For each build, check if it used a service connection that the pipeline no longer has permission to
+            return historic_builds.some(historic_build => {
+                if (!Array.isArray(historic_build.used_service_connections)) return false;
+                return historic_build.used_service_connections.some(serviceConnectionId => {
+                    // Does the pipeline still have permission to this endpoint?
+                    const pipelineHasPermission = Array.isArray(pipeline.resourcepermissions?.endpoint)
+                        ? pipeline.resourcepermissions.endpoint.map(String).includes(String(serviceConnectionId))
+                        : false;
+                    return !pipelineHasPermission;
+                });
+            });
+        });
+    }
+
+    // --- UI: Add filter for pipelines with historic unauthorized service connection usage ---
+    // Example usage: getPipelinesWithHistoricUnauthorizedServiceConnectionUsage(pipelines, builds)
+    
+    useEffect(() => {
+        const fetchPipelineResources = async () => {
+            if (viewMode === 'pipeline' && selectedPlatformSource?.id) {
+                // Only fetch if we have specific pipelines selected (max 10)
+                if (selectedPipelinesFilter && selectedPipelinesFilter.length > 0) {
+                    setLoading(true);
+                    try {
+                        // Limit to first 10 pipelines
+                        const pipelinesToFetch = selectedPipelinesFilter.slice(0, 10);
+                        
+                        // Show warning if more than 10 were selected
+                        if (selectedPipelinesFilter.length > 10) {
+                            console.warn(`Only the first 10 of ${selectedPipelinesFilter.length} selected pipelines will be displayed`);
+                        }
+                        
+                        console.log('Fetching resources for', pipelinesToFetch.length, 'selected pipelines');
+                        const resources = await fetchResourcesForPipelines(selectedPlatformSource.id, pipelinesToFetch);
+                        console.log('Fetched pipeline resources:', resources);
+                        setPipelineResources(resources);
+                    } catch (error) {
+                        console.error('Error fetching pipeline resources:', error);
+                        setPipelineResources(null);
+                    } finally {
+                        setLoading(false);
+                    }
+                } else {
+                    // Clear resources when no pipelines are selected
+                    console.log('No pipelines selected, clearing pipeline resources');
+                    setPipelineResources(null);
+                    setLoading(false);
+                }
+            } else if (viewMode === 'resource') {
+                // Clear pipeline resources when switching back to resource view
+                setPipelineResources(null);
+            }
+        };
+
+        fetchPipelineResources();
+    }, [viewMode, selectedPipelinesFilter, selectedPlatformSource, fetchResourcesForPipelines]);
+
+    // Helper function to apply resource filters to pipeline resources
+    const applyResourceFilters = (resources) => {
+        if (!resources || !resourceFilters) return resources;
+
+        let filtered = [...resources];
+
+        // Filter by search term
+        if (resourceFilters.searchTerm) {
+            const lowerCaseSearchTerm = resourceFilters.searchTerm.toLowerCase();
+            filtered = filtered.filter(resource => {
+                const resourceName = resource.name ? resource.name.toLowerCase() : '';
+                const resourceId = resource.id ? resource.id.toString() : '';
+                return resourceName.includes(lowerCaseSearchTerm) || resourceId.includes(lowerCaseSearchTerm);
+            });
+        }
+
+        // Filter by protected state
+        if (resourceFilters.protectedState && resourceFilters.protectedState !== 'all') {
+            filtered = filtered.filter(resource => resource.protectedState === resourceFilters.protectedState);
+        }
+
+        // Filter by cross project
+        if (resourceFilters.crossProject) {
+            filtered = filtered.filter(resource => resource.isCrossProject === resourceFilters.crossProject);
+        }
+
+        // Filter by pool type (only apply to pool resources)
+        if (resourceFilters.poolType && resourceFilters.poolType !== 'all') {
+            const isHosted = resourceFilters.poolType === 'ms-hosted';
+            filtered = filtered.filter(resource => {
+                // Only apply pool type filter to pool resources
+                if (resource.__resourceType === 'pool_merged' || resource.resourceType === 'pool_merged') {
+                    return resource.isHosted === isHosted;
+                }
+                // For non-pool resources, don't filter them out
+                return true;
+            });
+        }
+
+        // Filter by project
+        if (resourceFilters.selectedProject) {
+            const projectId = resourceFilters.selectedProject.id;
+            filtered = filtered.filter(resource => {
+                // Check if resource type has __resourceType
+                const resourceType = resource.__resourceType;
+                
+                if (resourceType === 'pool_merged') {
+                    // For pools, check queues
+                    if (resource.queues) {
+                        return resource.queues.some(queue => queue.projectId === projectId);
+                    }
+                    return false;
+                }
+
+                // Check k_projects_refs or k_project
+                if (resource.k_projects_refs) {
+                    return resource.k_projects_refs.some(ref => ref.id === projectId);
+                } else if (resource.k_project) {
+                    return resource.k_project.id === projectId;
+                }
+                return false;
+            });
+        }
+
+        // Filter by logic container
+        if (resourceFilters.logic_container_filter && resourceFilters.logic_container_filter !== 'all') {
+            const lc = logic_containers.find(lc => lc.id === resourceFilters.logic_container_filter);
+            if (lc && selectedPlatformSource?.id) {
+                let containerResourceIds = [];
+                if (lc.resources) {
+                    if (typeof lc.resources === 'object' && !Array.isArray(lc.resources)) {
+                        containerResourceIds = lc.resources[selectedPlatformSource.id] || [];
+                    } else if (Array.isArray(lc.resources)) {
+                        containerResourceIds = lc.resources;
+                    }
+                }
+                filtered = filtered.filter(resource => 
+                    containerResourceIds.map(String).includes(String(resource.id))
+                );
+            }
+        }
+
+        // Filter by overprivileged resources (resources in multiple logic containers)
+        if (resourceFilters.filterForOverprivilegedResources) {
+            filtered = filtered.filter(resource => {
+                const containers = logic_containers.filter(container => {
+                    if (container.resources && typeof container.resources === 'object' && !Array.isArray(container.resources)) {
+                        if (selectedPlatformSource?.id && container.resources[selectedPlatformSource.id]) {
+                            return container.resources[selectedPlatformSource.id].map(String).includes(String(resource.id));
+                        }
+                    } else if (Array.isArray(container.resources)) {
+                        return container.resources.map(String).includes(String(resource.id));
+                    }
+                    return false;
+                });
+                return containers.length > 1;
+            });
+        }
+
+        // Filter by overshared resources
+        if (resourceFilters.filterForOversharedResources) {
+            filtered = filtered.filter(resource => 
+                resource.isOpenAllPipelines || (resource.pipelinepermissions && resource.pipelinepermissions.length > 1)
+            );
+        }
+
+        // Filter by multi-select resource filter
+        if (resourceFilters.selectedResourcesFilter && resourceFilters.selectedResourcesFilter.length > 0) {
+            filtered = filtered.filter(resource =>
+                resourceFilters.selectedResourcesFilter.some(selectedResource => String(selectedResource.id) === String(resource.id))
+            );
+        }
+
+        return filtered;
+    };
 
     const getLogicContainerNames = (containerIds) => {
         const filteredLogicContainers = logic_containers.filter(container => containerIds?.includes(container.id));
@@ -155,7 +342,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
     //     return dedup_permissions;
     // };
 
-    function create_resource_node(resource, index, resourceType, checks) {
+    function create_resource_node(resource, index, resourceType, checks, inPipelineView = false) {
 
         // if pools, its an org level resource and I need to see if it has queues that are project specific
         // also if pools, I want to understand if it is selfhosted
@@ -185,7 +372,8 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                 projects: foundProjects ? foundProjects : [resource.projectId] || "No project info available",
                 type: "Environment",
                 checks: groupChecksByType(checks || []),
-                group: "protected_resource",
+                group: inPipelineView ? "resource_environment" : "protected_resource",
+                resourceType: "environment",
                 pipelinepermissions: resource.pipelinepermissions,
                 radius: 10,
                 label: resource?.name || "CI/CD Resource",
@@ -208,7 +396,8 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                 projects: foundProjects ? foundProjects : [resource.projectId] || "No project info available",
                 type: "Pool",
                 checks: groupChecksByType(checks || []),
-                group: "protected_resource",
+                group: inPipelineView ? "resource_pool" : "protected_resource",
+                resourceType: "pool_merged",
                 pipelinepermissions: resource.pipelinepermissions,
                 radius: 10,
                 label: resource?.name || "CI/CD Resource",
@@ -224,6 +413,33 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             };
         }
 
+        // Map resource types to specific groups for pipeline view
+        const groupForResourceType = {
+            'endpoint': 'resource_endpoint',
+            'variablegroup': 'resource_variablegroup',
+            'repository': 'resource_repository',
+            'securefile': 'resource_securefile'
+        };
+
+        // Add lastExecuted/lastExecution for endpoints
+        let lastExecuted = undefined;
+        let lastExecution = undefined;
+        if (resourceType === 'endpoint') {
+            // Try to get lastExecuted or lastExecution from resource or its references
+            lastExecuted = resource.lastExecuted || resource.lastExecution;
+            // If not present, try to infer from executions array if available
+            if (!lastExecuted && Array.isArray(resource.executions) && resource.executions.length > 0) {
+                // Find the max finishTime in executions[].data.finishTime
+                lastExecuted = resource.executions.reduce((latest, exec) => {
+                    const finishTime = exec?.data?.finishTime;
+                    const execDate = finishTime ? new Date(finishTime) : new Date(exec.date || exec.timestamp || exec.lastExecuted || exec.lastExecution);
+                    return (!latest || execDate > latest) ? execDate : latest;
+                }, null);
+            }
+            if (lastExecuted instanceof Date) lastExecuted = lastExecuted.toISOString();
+            lastExecution = lastExecuted;
+        }
+
         return {
             id: resourceType + "_" + (resource?.id.toString()) || resourceType + "_" + resourceType + "_unknownid_" + (index.toString()),
             name: resource?.name || "No name available",
@@ -231,11 +447,14 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             projects: foundProjects ? foundProjects : [resource.projectId] || "No project info available",
             type: resourceType.charAt(0).toUpperCase() + resourceType.slice(1) === "Pool_merged" ? "Pool" : resourceType.charAt(0).toUpperCase() + resourceType.slice(1),
             checks: groupChecksByType(checks || []),
-            group: "protected_resource",
+            group: inPipelineView && groupForResourceType[resourceType] ? groupForResourceType[resourceType] : "protected_resource",
+            resourceType: resourceType,
             pipelinepermissions: resource.pipelinepermissions,
             radius: 10,
             label: resource?.name || "CI/CD Resource",
             url: resource?.url,
+            // Add lastExecuted/lastExecution for endpoint nodes
+            ...(resourceType === 'endpoint' ? { lastExecuted, lastExecution } : {}),
         };
 
 
@@ -284,7 +503,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             if (!selectedPlatformSource?.id) return false;
             return container.platform_source_ids && container.platform_source_ids.includes(selectedPlatformSource.id);
         });
-        
+
         filteredContainers.forEach((container, index) => {
             data.nodes.push({
                 id: `${container.id}`,
@@ -308,9 +527,107 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
         // CREATE Protected Resource Nodes (filtering)
         // sometimes this changes and React rerenders without rerendering the pipeline nodes
 
-        filteredProtectedResources.forEach((protected_resource, index) => {
+        // PIPELINE-CENTRIC MODE: Show all resources accessible by filtered pipelines
+        let resourcesToDisplay = filteredProtectedResources;
+        let pipelinesToDisplay = pipelines;
 
-            const resourceNode = create_resource_node(protected_resource, index, selectedType, protected_resource.checks, logic_containers);
+        if (viewMode === 'pipeline') {
+            // If specific pipelines are selected (max 5), use fetched resources
+            if (selectedPipelinesFilter && selectedPipelinesFilter.length > 0 && pipelineResources) {
+                // Use the resources fetched specifically for the selected pipelines
+                resourcesToDisplay = [];
+                
+                // Filter by selected resource types
+                const selectedTypes = resourceFilters.selectedResourceTypes || ['endpoint', 'variablegroup', 'repository', 'pool_merged', 'securefile', 'environment'];
+                
+                // Add resources from the fetched data based on selected types
+                if (selectedTypes.includes('endpoint') && pipelineResources.endpoints) {
+                    pipelineResources.endpoints.forEach(r => resourcesToDisplay.push({ ...r, __resourceType: 'endpoint' }));
+                }
+                if (selectedTypes.includes('variablegroup') && pipelineResources.variableGroups) {
+                    pipelineResources.variableGroups.forEach(r => resourcesToDisplay.push({ ...r, __resourceType: 'variablegroup' }));
+                }
+                if (selectedTypes.includes('repository') && pipelineResources.repositories) {
+                    pipelineResources.repositories.forEach(r => resourcesToDisplay.push({ ...r, __resourceType: 'repository' }));
+                }
+                if (selectedTypes.includes('pool_merged') && pipelineResources.pools) {
+                    pipelineResources.pools.forEach(r => resourcesToDisplay.push({ ...r, __resourceType: 'pool_merged' }));
+                }
+                if (selectedTypes.includes('securefile') && pipelineResources.secureFiles) {
+                    pipelineResources.secureFiles.forEach(r => resourcesToDisplay.push({ ...r, __resourceType: 'securefile' }));
+                }
+                if (selectedTypes.includes('environment') && pipelineResources.environments) {
+                    pipelineResources.environments.forEach(r => resourcesToDisplay.push({ ...r, __resourceType: 'environment' }));
+                }
+                
+                // Apply resource filters to the fetched resources
+                resourcesToDisplay = applyResourceFilters(resourcesToDisplay);
+                
+                // Use only the selected pipelines (max 10)
+                pipelinesToDisplay = selectedPipelinesFilter.slice(0, 10);
+            } else {
+                // Fallback: Use all filtered pipelines from ResourceTracker
+                pipelinesToDisplay = pipelines;
+
+                // Filter by selected resource types
+                const selectedTypes = resourceFilters.selectedResourceTypes || ['endpoint', 'variablegroup', 'repository', 'pool_merged', 'securefile', 'environment'];
+
+                // Collect all resource IDs by type accessible by filtered pipelines
+                const accessibleResourcesByType = {};
+                pipelines.forEach(pipeline => {
+                    if (pipeline.resourcepermissions) {
+                        Object.keys(pipeline.resourcepermissions).forEach(resourceType => {
+                            // Only collect resource types that are selected
+                            if (selectedTypes.includes(resourceType)) {
+                                if (!accessibleResourcesByType[resourceType]) {
+                                    accessibleResourcesByType[resourceType] = new Set();
+                                }
+                                pipeline.resourcepermissions[resourceType].forEach(resourceId => {
+                                    accessibleResourcesByType[resourceType].add(String(resourceId));
+                                });
+                            }
+                        });
+                    }
+                });
+
+                // Collect all resources across all types that selected pipelines can access
+                resourcesToDisplay = [];
+                
+                // Map resource type names to their data sources
+                const resourceTypeMap = {
+                    'endpoint': endpoints || [],
+                    'variablegroup': variableGroups || [],
+                    'repository': repositories || [],
+                    'pool_merged': pools || [],
+                    'securefile': secureFiles || [],
+                    'environment': filteredProtectedResources.filter(r => r.type === 'Environment' || selectedType === 'environment')
+                };
+
+                // For each resource type the pipelines have access to, add those resources
+                Object.keys(accessibleResourcesByType).forEach(resourceType => {
+                    const resourceIds = accessibleResourcesByType[resourceType];
+                    const resourceSource = resourceTypeMap[resourceType.toLowerCase()];
+                    
+                    if (resourceSource && Array.isArray(resourceSource)) {
+                        const matchingResources = resourceSource.filter(resource => 
+                            resourceIds.has(String(resource.id))
+                        );
+                        matchingResources.forEach(resource => {
+                            // Add resource type info for proper node creation
+                            resourcesToDisplay.push({ ...resource, __resourceType: resourceType });
+                        });
+                    }
+                });
+            }
+        }
+
+        resourcesToDisplay.forEach((protected_resource, index) => {
+            // In pipeline view, use the resource type from the resource itself
+            const effectiveResourceType = viewMode === 'pipeline' && protected_resource.__resourceType 
+                ? protected_resource.__resourceType 
+                : selectedType;
+
+            const resourceNode = create_resource_node(protected_resource, index, effectiveResourceType, protected_resource.checks, viewMode === 'pipeline');
             if (resourceNode === undefined) {
                 return;
             }
@@ -335,7 +652,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                 });
             }
 
-            if (selectedType === "environment") {
+            if (effectiveResourceType === "environment") {
                 // Create a node for each resource in the environment's resources array
                 resourceNode.resources.forEach(target => {
                     data.nodes.push({
@@ -361,7 +678,8 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             }
 
             // Create queue nodes for pools (project-level representation)
-            if (selectedType === "pool_merged" && resourceNode.queues && Array.isArray(resourceNode.queues)) {
+            // Skip queues in pipeline view - only show pools directly
+            if (viewMode !== 'pipeline' && effectiveResourceType === "pool_merged" && resourceNode.queues && Array.isArray(resourceNode.queues)) {
                 resourceNode.queues.forEach(queue => {
                     const queueProject = projects?.find(p => p.id === queue.projectId);
                     const queueNode = {
@@ -404,7 +722,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                         });
                     }
                 });
-            } 
+            }
 
 
         });
@@ -412,12 +730,12 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
 
         // CREATE PIPELINE NODES
 
-        pipelines.forEach((pipeline_value) => {
+        pipelinesToDisplay.forEach((pipeline_value) => {
 
             const pipelineNode = {
                 id: "pipeline_" + pipeline_value.k_key,
                 name: pipeline_value.name,
-                description: pipeline_value.project.name ? "Pipeline in project " + pipeline_value.project.name : "Pipeline in unrecognised project",
+                description: pipeline_value.project?.name ? "Pipeline in project " + pipeline_value.project.name : "Pipeline in unrecognised project",
                 group: "pipeline",
                 // pipeline_actual_endpoints: build_definition.Resources.filter(resource => resource.Type === "ServiceConnection").map(resource => resource.id),
                 // pipeline_actual_queues: build_definition.Resources.filter(resource => resource.Type.contains("Pool")).map(resource => resource.id),
@@ -446,21 +764,36 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
 
                 for (let resourceid_permission of pipeline_value.resourcepermissions[resource_type]) {
 
-                    // For pools, connect to queue nodes instead of pool nodes directly
+                    // For pools in pipeline view, connect directly to pool nodes
+                    // In resource view, connect to queue nodes for project-level granularity
                     if (resource_type === "pool_merged") {
-                        const queueNodes = data.nodes.filter(node =>
-                            node.group === "queue" &&
-                            node.parentPoolId === resource_type + "_" + resourceid_permission
-                        );
-                        queueNodes.forEach(queueNode => {
-                            if (!data.links.some(link => link.source === pipelineNode.id && link.target === queueNode.id)) {
+                        if (viewMode === 'pipeline') {
+                            // Pipeline view: connect directly to pool
+                            if (data.nodes.some(node => node.id === resource_type + "_" + resourceid_permission)) {
                                 data.links.push({
                                     source: pipelineNode.id,
-                                    target: queueNode.id,
+                                    target: `${resource_type + "_" + resourceid_permission}`,
                                     value: 1
                                 });
                             }
-                        });
+                        } else {
+                            // Resource view: connect to queue nodes only if they're in the pipeline's queue permissions
+                            const pipelineQueueIds = pipeline_value.resourcepermissions.queue || [];
+                            const queueNodes = data.nodes.filter(node =>
+                                node.group === "queue" &&
+                                node.parentPoolId === resource_type + "_" + resourceid_permission &&
+                                pipelineQueueIds.includes(node.id.replace('queue_', ''))
+                            );
+                            queueNodes.forEach(queueNode => {
+                                if (!data.links.some(link => link.source === pipelineNode.id && link.target === queueNode.id)) {
+                                    data.links.push({
+                                        source: pipelineNode.id,
+                                        target: queueNode.id,
+                                        value: 1
+                                    });
+                                }
+                            });
+                        }
                     } else {
                         // For non-pool resources, connect directly
                         if (data.nodes.some(node => node.id === resource_type + "_" + resourceid_permission)) {
@@ -483,7 +816,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                 const potentialBuildYamlNode = {
                     id: `potential_build_${pipeline_value.id}_${branch}`,
                     name: `Branch ${branch}`,
-                    description: pipeline_value.project.name
+                    description: pipeline_value.project?.name
                         ? `Potential Pipeline Execution in project ${pipeline_value.project.name}`
                         : "Potential Pipeline Execution in unrecognised project",
                     group: "potential_build",
@@ -498,8 +831,8 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                         : pipeline_value.projectId
                             ? pipeline_value.projectId
                             : [],
-                    repository: pipeline_value.repository.name
-                        ? `${pipeline_value.repository.name} (${pipeline_value.repository.id} @ ${pipeline_value.project.name})`
+                    repository: pipeline_value.repository?.name
+                        ? `${pipeline_value.repository.name} (${pipeline_value.repository.id} @ ${pipeline_value.project?.name || 'unknown project'})`
                         : "Unknown Repository",
                     sourceBranch: branch,
                     yaml: build.yaml || "YAML not available",
@@ -522,13 +855,13 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             });
 
 
-            let historic_build_ids = pipeline_value.builds.builds;
+            let historic_build_ids = pipeline_value.builds?.builds;
             if (!Array.isArray(historic_build_ids)) {
                 historic_build_ids = [];
             }
 
             // Filter builds array for builds whose id is in historic_build_ids
-            const historic_builds = builds.filter(b => historic_build_ids.includes(String(b.id)));
+            const historic_builds = (builds && Array.isArray(builds)) ? builds.filter(b => historic_build_ids.includes(String(b.id))) : [];
 
             Object.values(historic_builds).forEach((historic_build) => {
                 const historicBuildNode = {
@@ -558,6 +891,30 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                     label: historic_build.sourceBranch,
                     value: 2,
                 });
+                // DOTTED CONNECTION LOGIC: For each service connection (endpoint) used by this build, if the pipeline is no longer permissioned, add a dotted link
+                if (Array.isArray(historic_build.used_service_connections)) {
+                    historic_build.used_service_connections.forEach((serviceConnectionId) => {
+                        // Find the endpoint node id
+                        const endpointNodeId = 'endpoint_' + serviceConnectionId;
+                        // Check if the endpoint node exists
+                        if (data.nodes.some(node => node.id === endpointNodeId)) {
+                            // Check if the pipeline still has permission to this endpoint
+                            const pipelineHasPermission = Array.isArray(pipeline_value.resourcepermissions?.endpoint)
+                            ? pipeline_value.resourcepermissions.endpoint.map(String).includes(String(serviceConnectionId))
+                            : false;
+                            if (!pipelineHasPermission) {
+                                // Add a dotted link from build to endpoint
+                                data.links.push({
+                                    source: historicBuildNode.id,
+                                    target: endpointNodeId,
+                                    label: 'used but not authorized',
+                                    value: 1,
+                                    style: 'dotted', // Custom property for rendering as dotted
+                                });
+                            }
+                        }
+                    });
+                }
             });
         });
 
@@ -625,10 +982,35 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
             });
         }
 
+        // Custom force for grouping resources by type in pipeline view
+        function resourceTypeForce(strength) {
+            let nodes;
+            function force(alpha) {
+                nodes.forEach(node => {
+                    if (node.group.startsWith('resource_')) {
+                        const targetX = {
+                            'resource_endpoint': -300,
+                            'resource_variablegroup': -150,
+                            'resource_repository': 0,
+                            'resource_securefile': 150,
+                            'resource_environment': 300,
+                            'resource_pool': 450  // Pools positioned more to the right
+                        }[node.group] || 0;
+                        
+                        node.vx += (targetX - node.x) * alpha * strength;
+                    }
+                });
+            }
+            force.initialize = _ => nodes = _;
+            return force;
+        }
+
         const simulation = d3.forceSimulation(nodes)
-            .force("link", d3.forceLink(links).id(d => d.id).distance(50))
-            .force("charge", d3.forceManyBody().strength(-100))
+            .force("link", d3.forceLink(links).id(d => d.id).distance(80))
+            .force("charge", d3.forceManyBody().strength(-300))
+            .force("collide", d3.forceCollide().radius(d => (d.radius || 7) + 5).strength(0.8))
             .force("project", projectForce(200)) // Custom force for grouping
+            .force("resourceType", resourceTypeForce(0.3)) // Group resources by type
             .force("x", d3.forceX())
             .force("y", d3.forceY((d) => {
                 switch (d.group) {
@@ -648,6 +1030,19 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                         return 100;
                     case "potential_build":
                         return 150;
+                    // Pipeline view resource type positioning
+                    case "resource_endpoint":
+                        return -50;
+                    case "resource_variablegroup":
+                        return -50;
+                    case "resource_repository":
+                        return -50;
+                    case "resource_securefile":
+                        return -50;
+                    case "resource_environment":
+                        return -50;
+                    case "resource_pool":  // Pools positioned lower
+                        return 100;
                     default:
                         return 200;
                 }
@@ -665,7 +1060,8 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                 .join("line")
                 .attr("stroke", "#999")
                 .attr("stroke-opacity", 0.6)
-                .attr("stroke-width", (d) => Math.sqrt(d.value));
+                .attr("stroke-width", (d) => Math.sqrt(d.value))
+                .attr("stroke-dasharray", d => d.style === "dotted" ? "2,2" : null);
 
             return { linkLines };
         }
@@ -840,7 +1236,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
         return () => {
             simulation.stop();
         };
-    }, [filteredProtectedResources, pipelines, builds, loading]); // Re-run effect if resourceType changes
+    }, [filteredProtectedResources, pipelines, builds, loading, viewMode, pipelineResources, endpoints, variableGroups, repositories, pools, secureFiles]); // Re-run effect if resourceType or pipelineResources changes
 
     useEffect(() => {
         d3.select(svgRef.current).selectAll("circle")
@@ -930,10 +1326,10 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
         } else {
             resourceId = resourceId.split('_')[1];
         }
-        
+
         // Get current platform source ID - you may need to pass this as a prop
         const platformSourceId = selectedPlatformSource?.id;
-        
+
         const filtered = logicContainers.filter(container => {
             // New format: resources scoped per platform source
             if (container.resources && typeof container.resources === 'object' && !Array.isArray(container.resources)) {
@@ -1169,6 +1565,8 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                     )}
                 </List>
 
+
+
                 <Box>
 
                     {selectedNode?.checks && Object.keys(selectedNode.checks).length > 0 ? (
@@ -1269,65 +1667,119 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
         "Alerts": (
             <Box>
                 {selectedNode?.cicd_sast?.length > 0 ? (
-                    selectedNode.cicd_sast.map((alert, idx) => (
-                        <Accordion key={idx} sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }} defaultExpanded>
-                            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center", width: "100%" }}>
-                                    <Typography sx={{ userSelect: "text", mr: 2 }} variant="h6">{alert.engine}</Typography>
-                                    <Typography sx={{ userSelect: "text", mr: 2 }} variant="body2" color="text.secondary">
-                                        {/* Scope: {alert.scope === "potential_pipeline_execution_yaml" ? "Potential Execution" : "Execution"} */}
-                                    </Typography>
-                                    <Chip
-                                        label={`${alert.results.length} result${alert.results.length !== 1 ? "s" : ""}`}
-                                        color={alert.results.length > 0 ? "error" : "success"}
-                                        size="small"
-                                        sx={{ mt: 1, alignSelf: "center" }}
-                                    />
-                                </Box>
-                            </AccordionSummary>
+                    selectedNode.cicd_sast.map((alert, idx) => {
+                        // Group findings by category
+                        const findingsByCategory = (alert.results || []).reduce((acc, finding) => {
+                            const category = finding.category || "Uncategorized";
+                            if (!acc[category]) {
+                                acc[category] = {
+                                    findings: [],
+                                    severity: finding.severity || "unknown",
+                                    description: finding.description || ""
+                                };
+                            }
+                            acc[category].findings.push(finding);
+                            return acc;
+                        }, {});
 
-                            <AccordionDetails>
-                                {alert.results.length > 0 ? (
-                                    alert.results.map((result, rIdx) => (
-                                        <Box
-                                            key={rIdx}
-                                            sx={{
-                                                mb: 2,
-                                                p: 2,
-                                                border: "1px solid #eee",
-                                                borderRadius: 2,
-                                                backgroundColor: "#fafafa",
-                                            }}
-                                        >
-                                            <Typography variant="body2">
-                                                <strong>Source:</strong> {" "}
-                                                <Link href={result.source} target="_blank" rel="noopener">
-                                                    {result.source}
-                                                </Link>
-                                            </Typography>
-                                            <Typography variant="body2">
-                                                <strong>Match:</strong>{" "}
-                                                <span style={{ color: "red", fontWeight: 600 }}>{result.match}</span>
-                                            </Typography>
-                                            <Typography variant="body2">
-                                                <strong>Pattern:</strong> {result.pattern}
-                                            </Typography>
-                                            <Typography variant="body2">
-                                                <strong>Start:</strong> {result.start}, <strong>End:</strong> {result.end}
+                        const getSeverityColor = (severity) => {
+                            switch (severity?.toLowerCase()) {
+                                case 'critical': return 'error';
+                                case 'high': return 'warning';
+                                case 'medium': return 'info';
+                                case 'low': return 'success';
+                                default: return 'default';
+                            }
+                        };
+
+                        return (
+                            <Accordion key={idx} sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }} defaultExpanded>
+                                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                    <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center", width: "100%" }}>
+                                        <Typography sx={{ userSelect: "text", mr: 2 }} variant="h6">{alert.engine}</Typography>
+                                        <Chip
+                                            label={`${alert.results.length} finding${alert.results.length !== 1 ? "s" : ""}`}
+                                            color={alert.results.length > 0 ? "error" : "success"}
+                                            size="small"
+                                            sx={{ ml: 1 }}
+                                        />
+                                    </Box>
+                                </AccordionSummary>
+
+                                <AccordionDetails>
+                                    {alert.results.length > 0 ? (
+                                        Object.entries(findingsByCategory).map(([category, data], catIdx) => (
+                                            <Accordion key={catIdx} sx={{ mb: 2 }} defaultExpanded>
+                                                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                                    <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center", width: "100%", gap: 1 }}>
+                                                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                                                            {category}
+                                                        </Typography>
+                                                        <Chip
+                                                            label={data.severity}
+                                                            color={getSeverityColor(data.severity)}
+                                                            size="small"
+                                                            sx={{ textTransform: 'capitalize' }}
+                                                        />
+                                                        <Chip
+                                                            label={`${data.findings.length} finding${data.findings.length !== 1 ? "s" : ""}`}
+                                                            size="small"
+                                                            variant="outlined"
+                                                        />
+                                                    </Box>
+                                                </AccordionSummary>
+                                                <AccordionDetails>
+                                                    {data.description && (
+                                                        <Box sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
+                                                            <Typography variant="body2" color="text.secondary">
+                                                                {data.description}
+                                                            </Typography>
+                                                        </Box>
+                                                    )}
+                                                    {data.findings.map((result, rIdx) => (
+                                                        <Box
+                                                            key={rIdx}
+                                                            sx={{
+                                                                mb: 2,
+                                                                p: 2,
+                                                                border: "1px solid #eee",
+                                                                borderRadius: 2,
+                                                                backgroundColor: "#fafafa",
+                                                            }}
+                                                        >
+                                                            <Typography variant="body2" sx={{ mb: 1 }}>
+                                                                <strong>Match:</strong>{" "}
+                                                                <span style={{ color: "red", fontWeight: 600, fontFamily: 'monospace' }}>{result.match}</span>
+                                                            </Typography>
+                                                            <Typography variant="body2" sx={{ mb: 1 }}>
+                                                                <strong>Source:</strong>{" "}
+                                                                <Link href={result.source} target="_blank" rel="noopener">
+                                                                    {result.source}
+                                                                </Link>
+                                                            </Typography>
+                                                            <Typography variant="body2" sx={{ mb: 1, fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                                                                <strong>Pattern:</strong> {result.pattern}
+                                                            </Typography>
+                                                            <Typography variant="caption" color="text.secondary">
+                                                                Position: {result.start} - {result.end}
+                                                            </Typography>
+                                                        </Box>
+                                                    ))}
+                                                </AccordionDetails>
+                                            </Accordion>
+                                        ))
+                                    ) : (
+                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                            <ThumbUpAltIcon sx={{ color: 'success.main', mr: 1 }} />
+                                            <Typography variant="body2" color="text.secondary">
+                                                No alerts triggered.
                                             </Typography>
                                         </Box>
-                                    ))
-                                ) : (
-                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                        <ThumbUpAltIcon sx={{ color: 'success.main', mr: 1 }} />
-                                        <Typography variant="body2" color="text.secondary">
-                                            No alerts triggered.
-                                        </Typography>
-                                    </Box>
-                                )}
-                            </AccordionDetails>
-                        </Accordion>
-                    ))
+                                    )}
+                                </AccordionDetails>
+                            </Accordion>
+                        );
+                    })
                 ) : (
                     <Typography variant="body2" color="text.secondary">
                         No scan results available.
@@ -1527,7 +1979,7 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
         line { stroke: #999; stroke-opacity: 0.6; }
         text { font-family: Arial, sans-serif; font-size: 12px; fill: #000; }
     </style>
-    ${svgNode.innerHTML}
+    ${DOMPurify.sanitize(svgNode.innerHTML, { USE_PROFILES: { svg: true } })}
 </svg>`;
 
             // Create canvas
@@ -1629,35 +2081,94 @@ const D3JSResource = ({ selectedType, filteredProtectedResources, builds, pipeli
                 <CircularProgress size={80} style={{ color: 'purple' }} />
             ) :
                 <Box sx={{ display: 'flex', height: '100%', width: '100%', border: '1px solid #ccc', borderRadius: '8px', padding: '16px', flexDirection: 'column' }}>
-                    <Box sx={{ display: 'flex', flexDirection: 'row', gap: 0.5, alignItems: 'center', justifyContent: 'flex-end', mb: 1 }}>
-                        <Button
-                            size="small"
-                            onClick={() => setShowLegend((prev) => !prev)}
-                            sx={{ minWidth: 'auto', width: 'auto', padding: '2px 4px' }}
-                        >
-                            {showLegend ? <InfoIcon fontSize="small" /> : <InfoOutlineIcon fontSize="small" />}
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<DownloadIcon sx={{ fontSize: '14px' }} />}
-                            onClick={handleDownloadSVG}
-                            sx={{ minWidth: 'auto', width: 'auto', padding: '2px 6px', fontSize: '0.7rem' }}
-                        >
-                            SVG
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<ImageIcon sx={{ fontSize: '14px' }} />}
-                            onClick={handleDownloadPNG}
-                            sx={{ minWidth: 'auto', width: 'auto', padding: '2px 6px', fontSize: '0.7rem' }}
-                        >
-                            PNG
-                        </Button>
+                    <Box sx={{ display: 'flex', flexDirection: 'row', gap: 2, alignItems: 'center', justifyContent: 'flex-end', mb: 2, flexWrap: 'wrap' }}>
+                        <Box sx={{ display: 'flex', flexDirection: 'row', gap: 0.5, alignItems: 'center' }}>
+                            <Button
+                                size="small"
+                                onClick={() => setShowLegend((prev) => !prev)}
+                                sx={{ minWidth: 'auto', width: 'auto', padding: '2px 4px' }}
+                            >
+                                {showLegend ? <InfoIcon fontSize="small" /> : <InfoOutlineIcon fontSize="small" />}
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                startIcon={<DownloadIcon sx={{ fontSize: '14px' }} />}
+                                onClick={handleDownloadSVG}
+                                sx={{ minWidth: 'auto', width: 'auto', padding: '2px 6px', fontSize: '0.7rem' }}
+                            >
+                                SVG
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                startIcon={<ImageIcon sx={{ fontSize: '14px' }} />}
+                                onClick={handleDownloadPNG}
+                                sx={{ minWidth: 'auto', width: 'auto', padding: '2px 6px', fontSize: '0.7rem' }}
+                            >
+                                PNG
+                            </Button>
+                        </Box>
                     </Box>
                     <Box ref={containerRef} sx={{ flex: 1, minHeight: 0, width: '100%', position: 'relative' }}>
-                        <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block' }}></svg>
+                        <svg 
+                            ref={svgRef} 
+                            style={{ 
+                                width: '100%', 
+                                height: '100%', 
+                                display: 'block',
+                                filter: viewMode === 'pipeline' && (!selectedPipelinesFilter || selectedPipelinesFilter.length === 0) ? 'blur(8px)' : 'none',
+                                opacity: viewMode === 'pipeline' && (!selectedPipelinesFilter || selectedPipelinesFilter.length === 0) ? 0.3 : 1,
+                                transition: 'filter 0.3s ease, opacity 0.3s ease'
+                            }}
+                        ></svg>
+                        {viewMode === 'pipeline' && (!selectedPipelinesFilter || selectedPipelinesFilter.length === 0) && (
+                            <Box
+                                sx={{
+                                    position: 'absolute',
+                                    top: '50%',
+                                    left: '50%',
+                                    transform: 'translate(-50%, -50%)',
+                                    textAlign: 'center',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                                    padding: 4,
+                                    borderRadius: 2,
+                                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                                    maxWidth: '500px',
+                                    zIndex: 1000
+                                }}
+                            >
+                                <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, color: 'primary.main' }}>
+                                    Pipeline View
+                                </Typography>
+                                <Typography variant="body1" sx={{ mb: 2, color: 'text.secondary' }}>
+                                    Select up to 10 pipelines to visualize their resources and relationships
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>
+                                    Use the pipeline filter to select which pipelines to display
+                                </Typography>
+                            </Box>
+                        )}
+                        {viewMode === 'pipeline' && selectedPipelinesFilter && selectedPipelinesFilter.length > 10 && (
+                            <Box
+                                sx={{
+                                    position: 'absolute',
+                                    top: 16,
+                                    right: 16,
+                                    backgroundColor: 'rgba(255, 152, 0, 0.95)',
+                                    color: 'white',
+                                    padding: 2,
+                                    borderRadius: 1,
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                    zIndex: 1000,
+                                    maxWidth: '300px'
+                                }}
+                            >
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                    Only showing first 10 of {selectedPipelinesFilter.length} selected pipelines
+                                </Typography>
+                            </Box>
+                        )}
                     </Box>
                     {renderDialogContent()}
                     {showLegend && (

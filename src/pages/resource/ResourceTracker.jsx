@@ -20,7 +20,7 @@ import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
-import { ListSubheader, Card, CardHeader, CardContent, Grid, Tooltip, Chip, Typography, CircularProgress, TextField, Checkbox, FormControlLabel, Divider, Fab, Zoom, Switch, ClickAwayListener, Collapse, Paper } from '@mui/material';
+import { ListSubheader, Card, CardHeader, CardContent, Grid, Tooltip, Chip, Typography, CircularProgress, TextField, Checkbox, FormControlLabel, Divider, Fab, ToggleButton, Switch, ClickAwayListener, Collapse, Paper, Autocomplete, ToggleButtonGroup } from '@mui/material';
 import ResourceButtonGroup from '../components/ResourceButtonGroup';
 import useStore from '../../state/stores/store';
 import Dialog from '@mui/material/Dialog';
@@ -40,6 +40,12 @@ import { set } from 'react-hook-form';
 import DOMPurify from "dompurify";
 import { Delete, DeleteForever } from '@mui/icons-material';
 import DeleteForeverSharpIcon from '@mui/icons-material/DeleteForeverSharp';
+import CloudIcon from '@mui/icons-material/Cloud';
+import StorageIcon from '@mui/icons-material/Storage';
+import FolderIcon from '@mui/icons-material/Folder';
+import LockIcon from '@mui/icons-material/Lock';
+import GroupWorkIcon from '@mui/icons-material/GroupWork';
+import PublicIcon from '@mui/icons-material/Public';
 import { filter } from 'd3';
 import { filterContainersByPlatformSource } from '../../utils/logicContainerHelpers';
 
@@ -70,26 +76,42 @@ const ResourceTracker = () => {
     // For resource filters
     const [isFilteredResource, setIsFilteredResource] = useState(0); // counter for badge
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedResourcesFilter, setSelectedResourcesFilter] = useState([]); // Multi-select resources
+    const [resourceSearchInput, setResourceSearchInput] = useState(''); // Track search input for select all
     const [protectedState, setProtectedState] = useState('all');
     const [crossProject, setCrossProject] = useState(false);
+    const [endpointLastUsedDays, setEndpointLastUsedDays] = React.useState("30");
 
     // Pool Specific
-    const [poolType, setPoolType] = useState('all');
+    const [poolType, setPoolType] = useState('self-hosted');
     // const [singleUsePools, setSingleUsePools] = useState(false);
+
+    // Resource type filter for pipeline view
+    const [selectedResourceTypes, setSelectedResourceTypes] = useState(['endpoint', 'variablegroup', 'repository', 'pool_merged', 'securefile', 'environment']);
+
+    // View mode: 'resource' or 'pipeline'
+    const [viewMode, setViewMode] = useState('resource');
 
     // For pipeline filters
     const [isFilteredPipeline, setIsFilteredPipeline] = useState(0); // counter for badge
     const [searchTermPipelines, setSearchTermPipelines] = useState('');
+    const [selectedPipelinesFilter, setSelectedPipelinesFilter] = useState([]); // Multi-select pipelines
+    const [pipelineSearchInput, setPipelineSearchInput] = useState(''); // Track search input for select all
     const [resourcePermissions, setResourcePermissions] = useState('all');
     const [buildsFilter, setBuildsFilter] = useState('all');
+    const [filterForUsedBuilds, setFilterForUsedBuilds] = useState('all'); // 'all', 'used', or 'unused'
 
     // Advanced pipeline filter conditions
+    // Filter for pipelines with historic unauthorized service connection usage
     const [pipelineAdvancedFilters, setPipelineAdvancedFilters] = useState([
         { field: 'jobPool', operator: 'equals', value: '' }
     ]);
+    // Limit for potential pipeline executions (branches)
+    const [potentialPipelineExecutionsLimit, setPotentialPipelineExecutionsLimit] = useState('');
     const [filterForAlertedPipelines, setFilterForAlertedPipelines] = useState(false);
     const [filterForJobAuthorizationScope, setFilterForJobAuthorizationScope] = useState('all');
     const [filterForPipelineType, setFilterForPipelineType] = useState('all');
+    const [filterForHistoricUnauthorizedServiceConnection, setFilterForHistoricUnauthorizedServiceConnection] = useState(false);
 
     // For policy filters
     const [filterForOverprivilegedResources, setFilterForOverprivilegedResources] = useState(false);
@@ -130,21 +152,24 @@ const ResourceTracker = () => {
     useEffect(() => {
         const activeFiltersCount = [
             searchTerm !== '',
+            selectedResourcesFilter.length > 0,
             protectedState !== 'all',
             crossProject !== false,
-            poolType !== 'all',
+            poolType !== 'self-hosted',
             logic_container_filter !== 'all',
             filterForOverprivilegedResources !== false,
-            filterForOversharedResources !== false
+            filterForOversharedResources !== false,
+            endpointLastUsedDays !== '30',
         ].filter(Boolean).length;
         setIsFilteredResource(activeFiltersCount);
-    }, [searchTerm, protectedState, crossProject, poolType, logic_container_filter, filterForOverprivilegedResources, filterForOversharedResources]);
+    }, [searchTerm, selectedResourcesFilter, protectedState, crossProject, poolType, logic_container_filter, filterForOverprivilegedResources, filterForOversharedResources, endpointLastUsedDays]);
 
 
     // Filters for pipelines - counters
     useEffect(() => {
         const activeFiltersCount = [
             searchTermPipelines !== '',
+            selectedPipelinesFilter.length > 0,
             pipelinesUsingFilteredResources !== false,
             resourcePermissions !== 'all',
             JSON.stringify(pipelineAdvancedFilters) !== JSON.stringify([
@@ -156,10 +181,13 @@ const ResourceTracker = () => {
             filterForOverprivilegedPipelines !== false,
             filterForJobAuthorizationScope !== 'all',
             filterForPipelineType !== 'all',
+            filterForHistoricUnauthorizedServiceConnection !== false,
+            filterForUsedBuilds !== 'all',
+            potentialPipelineExecutionsLimit !== '',
             buildsFilter !== 'all'
         ].filter(Boolean).length;
         setIsFilteredPipeline(activeFiltersCount);
-    }, [searchTermPipelines, pipelinesUsingFilteredResources, resourcePermissions, pipelineAdvancedFilters, filterForAlertedPipelines, filterForJobAuthorizationScope, filterForPipelineType, filterForUnqueriablePipelines, filterForDisabledPipelines, filterForOverprivilegedPipelines, buildsFilter]);
+    }, [searchTermPipelines, selectedPipelinesFilter, pipelinesUsingFilteredResources, resourcePermissions, pipelineAdvancedFilters, filterForAlertedPipelines, filterForJobAuthorizationScope, filterForPipelineType, filterForUnqueriablePipelines, filterForDisabledPipelines, filterForOverprivilegedPipelines, buildsFilter, potentialPipelineExecutionsLimit, filterForUsedBuilds, filterForHistoricUnauthorizedServiceConnection]);
 
     useEffect(() => {
         setCurrentPage("Tracker");
@@ -267,9 +295,11 @@ const ResourceTracker = () => {
             setProtectedState('all');
             setCrossProject(false);
             setResourcePermissions('all');
-            setPoolType('all');
+            setPoolType('self-hosted');
             setFilterForOverprivilegedResources(false);
             setFilterForOversharedResources(false);
+            setSelectedResourcesFilter([]);
+            setEndpointLastUsedDays('30');
         }
         if (scope === 'pipeline' || !scope) {
             setSearchTermPipelines('');
@@ -284,6 +314,10 @@ const ResourceTracker = () => {
             setFilterForAlertedPipelines(false);
             setFilterForJobAuthorizationScope('all');
             setFilterForPipelineType('all');
+            setSelectedPipelinesFilter([]);
+            setFilterForUsedBuilds('all');
+            setFilterForHistoricUnauthorizedServiceConnection(false);
+            setPotentialPipelineExecutionsLimit('');
             // Advanced pipeline filter conditions
             setPipelineAdvancedFilters([
                 { field: 'jobPool', operator: 'equals', value: '' }
@@ -301,6 +335,11 @@ const ResourceTracker = () => {
     const handleResourceTypeChange = (type) => {
         setResourceTypeSelected(type);
         handleFilterReset('resource');
+        // Reset pipeline filters specific to service connections when switching away
+        if (type !== 'endpoint') {
+            setFilterForUsedBuilds('all');
+            setFilterForHistoricUnauthorizedServiceConnection(false);
+        }
     };
 
     const handleLogicContainerSelect = (event) => {
@@ -388,6 +427,9 @@ const ResourceTracker = () => {
                     filterForOversharedResources,
                     resource_type_selected,
                     selectedProject: selectedProject?.id,
+                    selectedResourcesFilter: selectedResourcesFilter.map(r => ({ id: r.id, name: r.name })),
+                    selectedResourceTypes,
+                    endpointLastUsedDays,
                 } : null,
                 pipelineFilters: isFilteredPipeline > 0 ? {
                     searchTermPipelines,
@@ -402,7 +444,12 @@ const ResourceTracker = () => {
                     filterForUnqueriablePipelines,
                     filterForDisabledPipelines,
                     selectedProject: selectedProject?.id,
+                    selectedPipelinesFilter: selectedPipelinesFilter.map(p => ({ id: p.id, k_key: p.k_key, name: p.name })),
+                    filterForUsedBuilds,
+                    filterForHistoricUnauthorizedServiceConnection,
+                    potentialPipelineExecutionsLimit,
                 } : null,
+                viewMode,
             };
 
             if (editingSearchId) {
@@ -410,6 +457,7 @@ const ResourceTracker = () => {
                 await updateSavedSearch(editingSearchId, searchData);
             } else {
                 // Create new search
+                console.log('Creating new saved search with data:', searchData);
                 await createSavedSearch(searchData);
             }
 
@@ -420,8 +468,7 @@ const ResourceTracker = () => {
             // Refresh the saved searches list
             fetchSavedSearches();
         } catch (error) {
-            console.error(`Failed to ${editingSearchId ? 'update' : 'save'} search:`, error);
-            alert(`Failed to ${editingSearchId ? 'update' : 'save'} search. Please try again.`);
+            console.error(`Failed to update/save search:`, error);
         } finally {
             setIsSaving(false);
         }
@@ -439,10 +486,13 @@ const ResourceTracker = () => {
             setSearchTerm(savedSearch.resourceFilters.searchTerm || '');
             setProtectedState(savedSearch.resourceFilters.protectedState || 'all');
             setCrossProject(savedSearch.resourceFilters.crossProject || false);
-            setPoolType(savedSearch.resourceFilters.poolType || 'all');
+            setPoolType(savedSearch.resourceFilters.poolType || 'self-hosted');
             setlogic_container_filter(savedSearch.resourceFilters.logic_container_filter || 'all');
             setFilterForOverprivilegedResources(savedSearch.resourceFilters.filterForOverprivilegedResources || false);
             setFilterForOversharedResources(savedSearch.resourceFilters.filterForOversharedResources || false);
+            setSelectedResourcesFilter(savedSearch.resourceFilters.selectedResourcesFilter || []);
+            setSelectedResourceTypes(savedSearch.resourceFilters.selectedResourceTypes || ['endpoint', 'variablegroup', 'repository', 'pool_merged', 'securefile', 'environment']);
+            setEndpointLastUsedDays(savedSearch.resourceFilters.endpointLastUsedDays || '30');
         }
 
         // Apply pipeline filters
@@ -456,6 +506,15 @@ const ResourceTracker = () => {
             setFilterForOverprivilegedPipelines(savedSearch.pipelineFilters.filterForOverprivilegedPipelines || false);
             setFilterForUnqueriablePipelines(savedSearch.pipelineFilters.filterForUnqueriablePipelines || false);
             setFilterForDisabledPipelines(savedSearch.pipelineFilters.filterForDisabledPipelines || false);
+            setSelectedPipelinesFilter(savedSearch.pipelineFilters.selectedPipelinesFilter || []);
+            setFilterForUsedBuilds(savedSearch.pipelineFilters.filterForUsedBuilds || 'all');
+            setFilterForHistoricUnauthorizedServiceConnection(savedSearch.pipelineFilters.filterForHistoricUnauthorizedServiceConnection || false);
+            setPotentialPipelineExecutionsLimit(savedSearch.pipelineFilters.potentialPipelineExecutionsLimit || '');
+        }
+
+        // Apply view mode
+        if (savedSearch.viewMode) {
+            setViewMode(savedSearch.viewMode);
         }
 
         setLoadDialogOpen(false);
@@ -560,7 +619,10 @@ const ResourceTracker = () => {
 
     function filterBuildsByProject(builds, projectFilter) {
         if (!projectFilter) {
-            return builds;
+            return builds || [];
+        }
+        if (!builds || !Array.isArray(builds)) {
+            return [];
         }
 
         var filtered_builds = []
@@ -645,14 +707,38 @@ const ResourceTracker = () => {
         // need to get the resources the pipeline can access from here, a list and then use that list to filter against the filtered resources
         var filteredProtectedResourcesIds = filteredProtectedResources.map(resource => String(resource.id))
 
+        // For pool_merged, also collect queue IDs from the filtered pools
+        var filteredQueueIds = [];
+        if (resource_type_selected === 'pool_merged') {
+            filteredProtectedResources.forEach(pool => {
+                if (pool.queues && Array.isArray(pool.queues)) {
+                    pool.queues.forEach(queue => {
+                        filteredQueueIds.push(String(queue.id));
+                    });
+                }
+            });
+        }
+
         return Object.values(filteredPipelines).filter(p => {
+            if (!p.resourcepermissions) {
+                return false;
+            }
+
+            // Check if pipeline has permissions via the selected resource type
             if (
-                p.resourcepermissions &&
                 p.resourcepermissions[resource_type_selected] &&
                 p.resourcepermissions[resource_type_selected].some(id => filteredProtectedResourcesIds.includes(id))
             ) {
                 return true;
             }
+
+            // For pool_merged resources, also check if pipeline has permissions via queue IDs
+            if (resource_type_selected === 'pool_merged' && p.resourcepermissions.queue) {
+                if (p.resourcepermissions.queue.some(queueId => filteredQueueIds.includes(String(queueId)))) {
+                    return true;
+                }
+            }
+
             return false;
         })
     }
@@ -698,7 +784,7 @@ const ResourceTracker = () => {
     }
 
     function filterByPoolType(resources, poolType) {
-        if (poolType === 'all') {
+        if (poolType === 'all' || resource_type_selected !== 'pool_merged') {
             return resources;
         }
         let compare = false;
@@ -710,33 +796,70 @@ const ResourceTracker = () => {
         return resources.filter(resource => resource.isHosted === compare);
     }
 
-    // @TODO implement
-    // function filterBySingleUse(resources, poolType) {
-    //     return resources
-    // }
 
     let filteredProtectedResources = [];
     let filteredPipelines = pipelines;
-    let filteredBuilds = builds;
+    let filteredBuilds = builds || [];
+    // Filter builds by usage in endpoint executions history
+    if (filterForUsedBuilds !== 'all' && endpoints && Array.isArray(endpoints)) {
+        // Collect all build IDs used in any endpoint's executions[].data.buildId
+        const usedBuildIds = new Set();
+        endpoints.forEach(endpoint => {
+            if (Array.isArray(endpoint.executions)) {
+                endpoint.executions.forEach(exec => {
+                    // console.log(exec);
+                    const buildId = exec?.data?.owner?.id;
+                    if (buildId) usedBuildIds.add(String(buildId));
+                });
+            }
+        });
+        if (filterForUsedBuilds === 'used') {
+            // Show only builds that used the resource
+            filteredBuilds = filteredBuilds.filter(build => usedBuildIds.has(String(build.id)));
+        } else if (filterForUsedBuilds === 'unused') {
+            // Show only builds that did NOT use the resource
+            filteredBuilds = filteredBuilds.filter(build => !usedBuildIds.has(String(build.id)));
+        }
+    }
+    // New flag for filtering builds by usage in service connection executions
 
+    // Get all resources of selected type (unfiltered) for Autocomplete options
+    let allResourcesOfSelectedType = [];
     switch (resource_type_selected) {
         case 'endpoint':
             filteredProtectedResources = endpoints;
+            allResourcesOfSelectedType = endpoints;
+            // Filter endpoints by last used days if set
+            if (resource_type_selected === 'endpoint' && endpointLastUsedDays && !isNaN(Number(endpointLastUsedDays))) {
+                const days = Number(endpointLastUsedDays);
+                const now = new Date();
+                filteredProtectedResources = filteredProtectedResources.filter(endpoint => {
+                    if (!endpoint.last_execution) return false;
+                    const last = new Date(endpoint.last_execution.finishTime);
+                    const diffDays = (now - last) / (1000 * 60 * 60 * 24);
+                    return diffDays <= days;
+                });
+            }
             break;
         case 'variablegroup':
             filteredProtectedResources = variableGroups;
+            allResourcesOfSelectedType = variableGroups;
             break;
         case 'repository':
             filteredProtectedResources = repositories;
+            allResourcesOfSelectedType = repositories;
             break;
         case 'pool_merged':
             filteredProtectedResources = pools;
+            allResourcesOfSelectedType = pools;
             break;
         case 'securefile':
             filteredProtectedResources = secureFiles;
+            allResourcesOfSelectedType = secureFiles;
             break;
         case 'environment':
             filteredProtectedResources = environments;
+            allResourcesOfSelectedType = environments;
             // if i want to drill into deployment groups as well
             // filteredProtectedResources = [...environments, ...deploymentGroups];
             break;
@@ -776,7 +899,7 @@ const ResourceTracker = () => {
     // get all the containers associated with this resource and if they exist in the nodes, connect them
     function getLogicContainersForResource(resourceId) {
         const platformSourceId = selectedPlatformSource?.id;
-        
+
         return logic_containers.filter(container => {
             // New format: resources scoped per platform source
             if (container.resources && typeof container.resources === 'object' && !Array.isArray(container.resources)) {
@@ -805,6 +928,13 @@ const ResourceTracker = () => {
         });
     }
 
+    // Apply multi-select resource filter
+    if (selectedResourcesFilter.length > 0) {
+        filteredProtectedResources = filteredProtectedResources.filter(resource =>
+            selectedResourcesFilter.some(selectedResource => selectedResource.id === resource.id)
+        );
+    }
+
 
     if (pipelinesUsingFilteredResources) {
         filteredPipelines = filterPipelinesUsingFilteredResources(filteredPipelines, filteredProtectedResources);
@@ -814,6 +944,37 @@ const ResourceTracker = () => {
         filteredPipelines = filterPipelinesBySearchTerm(filteredPipelines, searchTermPipelines);
     }
 
+    // Apply multi-select pipeline filter
+    if (selectedPipelinesFilter.length > 0) {
+        filteredPipelines = filteredPipelines.filter(pipeline =>
+            selectedPipelinesFilter.some(selectedPipeline => selectedPipeline.k_key === pipeline.k_key)
+        );
+    }
+
+    // Filter: pipelines where a build used a service connection but the pipeline no longer has permission
+    function getPipelinesWithHistoricUnauthorizedServiceConnectionUsage(pipelines, builds) {
+        return pipelines.filter(pipeline => {
+            // Get all historic builds for this pipeline
+            let historic_build_ids = pipeline.builds?.builds;
+            if (!Array.isArray(historic_build_ids) || !builds || !Array.isArray(builds)) return false;
+            const historic_builds = builds.filter(b => historic_build_ids.includes(String(b.id)));
+            // For each build, check if it used a service connection that the pipeline no longer has permission to
+            return historic_builds.some(historic_build => {
+                if (!Array.isArray(historic_build.used_service_connections)) return false;
+                return historic_build.used_service_connections.some(serviceConnectionId => {
+                    // Does the pipeline still have permission to this endpoint?
+                    const pipelineHasPermission = Array.isArray(pipeline.resourcepermissions?.endpoint)
+                        ? pipeline.resourcepermissions.endpoint.map(String).includes(String(serviceConnectionId))
+                        : false;
+                    return !pipelineHasPermission;
+                });
+            });
+        });
+    }
+
+    if (filterForHistoricUnauthorizedServiceConnection) {
+        filteredPipelines = getPipelinesWithHistoricUnauthorizedServiceConnectionUsage(filteredPipelines, builds);
+    }
 
     if (filterForOverprivilegedPipelines) {
         filteredPipelines = Object.values(filteredPipelines).filter(pipeline => {
@@ -1185,7 +1346,6 @@ const ResourceTracker = () => {
             }
 
             // Resource Repository filters
-            // Resource Repository filters
             if (resourceRepoFilters.length > 0) {
                 // Group name and ref filters separately
                 const nameFilters = resourceRepoFilters.filter(f => f.field === 'repositoryName');
@@ -1363,6 +1523,24 @@ const ResourceTracker = () => {
         filteredBuilds = filterBuildsByAdvancedFilters(filteredBuilds, pipelineAdvancedFilters.filter(f => f.value));
     }
 
+    // Apply limit to potential pipeline executions (preview) if set
+    for (const pipeline of Object.values(filteredPipelines)) {
+        // Cache the original preview if not already cached
+        if (!pipeline.builds._originalPreview && pipeline.builds.preview) {
+            pipeline.builds._originalPreview = { ...pipeline.builds.preview };
+        }
+        const sourcePreview = pipeline.builds._originalPreview || pipeline.builds.preview || {};
+        if (potentialPipelineExecutionsLimit && potentialPipelineExecutionsLimit >= 0) {
+            const previewEntries = Object.entries(sourcePreview);
+            const limitedEntries = previewEntries.slice(0, potentialPipelineExecutionsLimit);
+            pipeline.builds.preview = Object.fromEntries(limitedEntries);
+        } else {
+            // Restore the full preview from the cache
+            pipeline.builds.preview = { ...sourcePreview };
+        }
+    }
+
+
     // Filter pipelines with executions (nodes) that have alerts
     if (filterForAlertedPipelines) {
         filteredPipelines = Object.values(filteredPipelines).filter(pipeline => {
@@ -1378,7 +1556,8 @@ const ResourceTracker = () => {
             // Check potential pipeline executions (preview)
             let hasAlertedPotential = false;
             if (pipeline.builds && pipeline.builds.preview) {
-                hasAlertedPotential = Object.values(pipeline.builds.preview).some(previewBuild => {
+                const previews = Object.values(pipeline.builds.preview);
+                hasAlertedPotential = previews.some(previewBuild => {
                     return previewBuild && Array.isArray(previewBuild.cicd_sast) && previewBuild.cicd_sast.some(alert => Array.isArray(alert.results) && alert.results.length > 0);
                 });
             }
@@ -1398,12 +1577,24 @@ const ResourceTracker = () => {
                         Resource & Pipeline Tracker
                     </Typography>
                     <Stack sx={{ justifyContent: 'space-between' }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2, mb: 2 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 2, mb: 2, gap: 2 }}>
                             <ResourceButtonGroup
                                 resourceTypes={resourceTypes.filter(rt => !rt.disabled)}
-                                resourceType={resource_type_selected}
-                                handleResourceTypeChange={handleResourceTypeChange}
+                                resourceType={viewMode === 'pipeline' ? '' : resource_type_selected}
+                                handleResourceTypeChange={(newType) => {
+                                    handleResourceTypeChange(newType);
+                                    setViewMode('resource'); // Selecting a resource type implicitly sets resource view
+                                }}
                             />
+                            <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+                            <Button
+                                variant={viewMode === 'pipeline' ? 'contained' : 'outlined'}
+                                onClick={() => setViewMode(viewMode === 'pipeline' ? 'resource' : 'pipeline')}
+                                size="small"
+                                sx={{ height: 'fit-content' }}
+                            >
+                                Pipeline View
+                            </Button>
                         </Box>
                         {/* <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2, mb: 2 }}>
                             <ButtonGroup>
@@ -1475,7 +1666,7 @@ const ResourceTracker = () => {
                                             borderRadius: 1,
                                             borderColor: "#ee4266",
                                             overflow: "hidden",
-                                            marginLeft:4
+                                            marginLeft: 4
                                         }}
                                     >
                                         <CardHeader
@@ -1534,7 +1725,7 @@ const ResourceTracker = () => {
                                             </Typography>
 
                                             <Grid container spacing={2} sx={{ mt: 0.5, flexWrap: 'nowrap' }}>
-                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                <Grid sx={{ flex: 1, minWidth: 0 }}>
                                                     <TextField
                                                         fullWidth
                                                         size="small"
@@ -1546,7 +1737,58 @@ const ResourceTracker = () => {
                                                     />
                                                 </Grid>
 
-                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                <Grid sx={{ flex: 1, minWidth: 0 }}>
+                                                    <Autocomplete
+                                                        multiple
+                                                        size="small"
+                                                        options={allResourcesOfSelectedType || []}
+                                                        getOptionLabel={(option) => {
+                                                            if (option.__isSelectAll) return option.label;
+                                                            return option.name || option.id || '';
+                                                        }}
+                                                        getOptionKey={(option) => option.__isSelectAll ? 'select-all' : option.id}
+                                                        value={selectedResourcesFilter}
+                                                        inputValue={resourceSearchInput}
+                                                        onInputChange={(event, newInputValue) => {
+                                                            setResourceSearchInput(newInputValue);
+                                                        }}
+                                                        onChange={(event, newValue, reason) => {
+                                                            if (reason === 'selectOption' || reason === 'removeOption') {
+                                                                const selectAllIndex = newValue.findIndex(item => item.__isSelectAll);
+                                                                if (selectAllIndex !== -1) {
+                                                                    // Get filtered options based on current input
+                                                                    const filtered = (allResourcesOfSelectedType || []).filter(option =>
+                                                                        (option.name || option.id || '').toLowerCase().includes(resourceSearchInput.toLowerCase())
+                                                                    );
+                                                                    setSelectedResourcesFilter(filtered);
+                                                                    setResourceSearchInput('');
+                                                                    return;
+                                                                }
+                                                            }
+                                                            setSelectedResourcesFilter(newValue);
+                                                        }}
+                                                        filterOptions={(options, params) => {
+                                                            const filtered = options.filter(option =>
+                                                                (option.name || option.id || '').toLowerCase().includes(params.inputValue.toLowerCase())
+                                                            );
+                                                            if (params.inputValue && filtered.length > 0) {
+                                                                return [
+                                                                    { __isSelectAll: true, label: `Select all matching (${filtered.length})` },
+                                                                    ...filtered
+                                                                ];
+                                                            }
+                                                            return filtered;
+                                                        }}
+                                                        renderInput={(params) => (
+                                                            <TextField {...params} label="Select resources" placeholder="Choose resources..." />
+                                                        )}
+                                                        sx={{ width: '100%' }}
+                                                        limitTags={2}
+                                                        isOptionEqualToValue={(option, value) => option.id === value.id}
+                                                    />
+                                                </Grid>
+
+                                                <Grid sx={{ flex: 1, minWidth: 0 }}>
                                                     <FormControl fullWidth size="small" sx={{ width: '100%' }}>
                                                         <InputLabel id="logic-container-filter-label">
                                                             Logic container
@@ -1572,7 +1814,7 @@ const ResourceTracker = () => {
                                                     </FormControl>
                                                 </Grid>
 
-                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                <Grid sx={{ flex: 1, minWidth: 0 }}>
                                                     <FormControl fullWidth size="small" sx={{ width: '100%' }}>
                                                         <InputLabel id="compliance-state-label">
                                                             Resource protection
@@ -1592,8 +1834,23 @@ const ResourceTracker = () => {
                                                     </FormControl>
                                                 </Grid>
 
+                                                {/* Endpoint last used filter */}
+                                                {resource_type_selected === "endpoint" && (
+                                                    <Grid sx={{ flex: 1, minWidth: 0 }}>
+                                                        <TextField
+                                                            fullWidth
+                                                            size="small"
+                                                            variant="outlined"
+                                                            label="Used in last (days)"
+                                                            type="number"
+                                                            value={endpointLastUsedDays || ''}
+                                                            onChange={e => setEndpointLastUsedDays(e.target.value.replace(/[^0-9]/g, ''))}
+                                                            sx={{ width: '100%' }}
+                                                        />
+                                                    </Grid>
+                                                )}
                                                 {resource_type_selected === "pool_merged" && (
-                                                    <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                    <Grid sx={{ flex: 1, minWidth: 0 }}>
                                                         <FormControl fullWidth size="small" sx={{ width: '100%' }}>
                                                             <InputLabel id="pool-type-label">Pool type</InputLabel>
                                                             <Select
@@ -1612,6 +1869,89 @@ const ResourceTracker = () => {
                                                     </Grid>
                                                 )}
                                             </Grid>
+
+                                            {/* Resource Type Filter - Only shown in pipeline view */}
+                                            {viewMode === 'pipeline' && (
+                                                <Box sx={{ mt: 2 }}>
+                                                    <Typography variant="overline" sx={{ color: "text.secondary", mb: 1, display: 'block' }}>
+                                                        Resource Types (Pipeline View Only)
+                                                    </Typography>
+                                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                                                        <Chip
+                                                            icon={<CloudIcon sx={{ ml: 0.5 }} />}
+                                                            label="Service Connections"
+                                                            onClick={() => {
+                                                                const newTypes = selectedResourceTypes.includes('endpoint')
+                                                                    ? selectedResourceTypes.filter(t => t !== 'endpoint')
+                                                                    : [...selectedResourceTypes, 'endpoint'];
+                                                                setSelectedResourceTypes(newTypes);
+                                                            }}
+                                                            color={selectedResourceTypes.includes('endpoint') ? 'primary' : 'default'}
+                                                            variant={selectedResourceTypes.includes('endpoint') ? 'filled' : 'outlined'}
+                                                        />
+                                                        <Chip
+                                                            icon={<GroupWorkIcon sx={{ ml: 0.5 }} />}
+                                                            label="Variable Groups"
+                                                            onClick={() => {
+                                                                const newTypes = selectedResourceTypes.includes('variablegroup')
+                                                                    ? selectedResourceTypes.filter(t => t !== 'variablegroup')
+                                                                    : [...selectedResourceTypes, 'variablegroup'];
+                                                                setSelectedResourceTypes(newTypes);
+                                                            }}
+                                                            color={selectedResourceTypes.includes('variablegroup') ? 'primary' : 'default'}
+                                                            variant={selectedResourceTypes.includes('variablegroup') ? 'filled' : 'outlined'}
+                                                        />
+                                                        <Chip
+                                                            icon={<FolderIcon sx={{ ml: 0.5 }} />}
+                                                            label="Repositories"
+                                                            onClick={() => {
+                                                                const newTypes = selectedResourceTypes.includes('repository')
+                                                                    ? selectedResourceTypes.filter(t => t !== 'repository')
+                                                                    : [...selectedResourceTypes, 'repository'];
+                                                                setSelectedResourceTypes(newTypes);
+                                                            }}
+                                                            color={selectedResourceTypes.includes('repository') ? 'primary' : 'default'}
+                                                            variant={selectedResourceTypes.includes('repository') ? 'filled' : 'outlined'}
+                                                        />
+                                                        <Chip
+                                                            icon={<StorageIcon sx={{ ml: 0.5 }} />}
+                                                            label="Agent Pools"
+                                                            onClick={() => {
+                                                                const newTypes = selectedResourceTypes.includes('pool_merged')
+                                                                    ? selectedResourceTypes.filter(t => t !== 'pool_merged')
+                                                                    : [...selectedResourceTypes, 'pool_merged'];
+                                                                setSelectedResourceTypes(newTypes);
+                                                            }}
+                                                            color={selectedResourceTypes.includes('pool_merged') ? 'primary' : 'default'}
+                                                            variant={selectedResourceTypes.includes('pool_merged') ? 'filled' : 'outlined'}
+                                                        />
+                                                        <Chip
+                                                            icon={<LockIcon sx={{ ml: 0.5 }} />}
+                                                            label="Secure Files"
+                                                            onClick={() => {
+                                                                const newTypes = selectedResourceTypes.includes('securefile')
+                                                                    ? selectedResourceTypes.filter(t => t !== 'securefile')
+                                                                    : [...selectedResourceTypes, 'securefile'];
+                                                                setSelectedResourceTypes(newTypes);
+                                                            }}
+                                                            color={selectedResourceTypes.includes('securefile') ? 'primary' : 'default'}
+                                                            variant={selectedResourceTypes.includes('securefile') ? 'filled' : 'outlined'}
+                                                        />
+                                                        <Chip
+                                                            icon={<PublicIcon sx={{ ml: 0.5 }} />}
+                                                            label="Environments"
+                                                            onClick={() => {
+                                                                const newTypes = selectedResourceTypes.includes('environment')
+                                                                    ? selectedResourceTypes.filter(t => t !== 'environment')
+                                                                    : [...selectedResourceTypes, 'environment'];
+                                                                setSelectedResourceTypes(newTypes);
+                                                            }}
+                                                            color={selectedResourceTypes.includes('environment') ? 'primary' : 'default'}
+                                                            variant={selectedResourceTypes.includes('environment') ? 'filled' : 'outlined'}
+                                                        />
+                                                    </Box>
+                                                </Box>
+                                            )}
 
                                             <Divider sx={{ my: 2 }} />
 
@@ -1726,7 +2066,7 @@ const ResourceTracker = () => {
                                             </Typography>
 
                                             <Grid container spacing={2} sx={{ mt: 0.5, flexWrap: 'nowrap' }}>
-                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                <Grid sx={{ flex: 1, minWidth: 0 }}>
                                                     <TextField
                                                         fullWidth
                                                         size="small"
@@ -1738,7 +2078,59 @@ const ResourceTracker = () => {
                                                     />
                                                 </Grid>
 
-                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                <Grid sx={{ flex: 1, minWidth: 0 }}>
+                                                    <Autocomplete
+                                                        multiple
+                                                        size="small"
+                                                        options={pipelines || []}
+                                                        getOptionLabel={(option) => {
+                                                            if (option.__isSelectAll) return option.label;
+                                                            return option.name || option.k_key || '';
+                                                        }}
+                                                        getOptionKey={(option) => option.__isSelectAll ? 'select-all' : (option.id || option.k_key)}
+                                                        value={selectedPipelinesFilter}
+                                                        inputValue={pipelineSearchInput}
+                                                        onInputChange={(event, newInputValue) => {
+                                                            setPipelineSearchInput(newInputValue);
+                                                        }}
+                                                        onChange={(event, newValue, reason) => {
+                                                            if (reason === 'selectOption' || reason === 'removeOption') {
+                                                                const selectAllIndex = newValue.findIndex(item => item.__isSelectAll);
+                                                                if (selectAllIndex !== -1) {
+                                                                    const filtered = (pipelines || []).filter(option =>
+                                                                        (option.name || option.k_key || '').toLowerCase().includes(pipelineSearchInput.toLowerCase())
+                                                                    );
+                                                                    const limited = filtered.slice(0, 20);
+                                                                    setSelectedPipelinesFilter(limited);
+                                                                    setPipelineSearchInput('');
+                                                                    return;
+                                                                }
+                                                            }
+                                                            setSelectedPipelinesFilter(newValue);
+                                                        }}
+                                                        filterOptions={(options, params) => {
+                                                            const filtered = options.filter(option =>
+                                                                (option.name || option.k_key || '').toLowerCase().includes(params.inputValue.toLowerCase())
+                                                            );
+                                                            if (params.inputValue && filtered.length > 0) {
+                                                                const limitedCount = Math.min(filtered.length, 20);
+                                                                return [
+                                                                    { __isSelectAll: true, label: `Select all matching (${limitedCount} of ${filtered.length})` },
+                                                                    ...filtered
+                                                                ];
+                                                            }
+                                                            return filtered;
+                                                        }}
+                                                        renderInput={(params) => (
+                                                            <TextField {...params} label="Select pipelines" placeholder="Choose pipelines..." />
+                                                        )}
+                                                        sx={{ width: '100%' }}
+                                                        limitTags={2}
+                                                        isOptionEqualToValue={(option, value) => option.k_key === value.k_key}
+                                                    />
+                                                </Grid>
+
+                                                <Grid sx={{ flex: 1, minWidth: 0 }}>
                                                     <FormControl fullWidth size="small" sx={{ width: '100%' }}>
                                                         <InputLabel id="authz-label">Authorization scope</InputLabel>
                                                         <Select
@@ -1756,7 +2148,7 @@ const ResourceTracker = () => {
                                                     </FormControl>
                                                 </Grid>
 
-                                                <Grid item sx={{ flex: 1, minWidth: 0 }}>
+                                                <Grid sx={{ flex: 1, minWidth: 0 }}>
                                                     <FormControl fullWidth size="small" sx={{ width: '100%' }}>
                                                         <InputLabel id="type-label">Pipeline type</InputLabel>
                                                         <Select
@@ -1794,6 +2186,7 @@ const ResourceTracker = () => {
                                                     }
                                                     label="Permissioned"
                                                 />
+
                                                 <FormControlLabel
                                                     control={
                                                         <Checkbox
@@ -1838,6 +2231,79 @@ const ResourceTracker = () => {
                                                     }
                                                     label="YAML error"
                                                 />
+                                            </Stack>
+
+                                            <Divider sx={{ my: 2 }}></Divider>
+                                            <Typography variant="overline" sx={{ color: "text.secondary" }}>
+                                                Pipeline executions
+                                            </Typography>
+
+                                            {(!builds || !Array.isArray(builds) || builds.length === 0) && (
+                                                <Box sx={{ mb: 2, p: 1.5, bgcolor: 'action.disabledBackground', borderRadius: 1 }}>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                                        Missing build data - Pipeline execution filters unavailable
+                                                    </Typography>
+                                                </Box>
+                                            )}
+
+                                            <Stack 
+                                                direction="row" 
+                                                flexWrap="wrap" 
+                                                gap={1.5} 
+                                                sx={{ 
+                                                    mt: 1,
+                                                    opacity: (!builds || !Array.isArray(builds) || builds.length === 0) ? 0.5 : 1,
+                                                    pointerEvents: (!builds || !Array.isArray(builds) || builds.length === 0) ? 'none' : 'auto'
+                                                }}
+                                            >
+                                                <FormControl size="small">
+                                                    <TextField
+                                                        label="Branch limit"
+                                                        type="number"
+                                                        size="small"
+                                                        variant="outlined"
+                                                        value={potentialPipelineExecutionsLimit}
+                                                        onChange={e => {
+                                                            const val = e.target.value.replace(/[^0-9]/g, '');
+                                                            setPotentialPipelineExecutionsLimit(val);
+                                                        }}
+                                                        placeholder="Limit preview builds"
+                                                        disabled={!builds || !Array.isArray(builds) || builds.length === 0}
+                                                    />
+                                                </FormControl>
+                                                {resource_type_selected === 'endpoint' && (
+                                                    <>
+                                                        <FormControlLabel
+                                                            control={
+                                                                <Checkbox
+                                                                    checked={filterForHistoricUnauthorizedServiceConnection}
+                                                                    onChange={(e) => setFilterForHistoricUnauthorizedServiceConnection(e.target.checked)}
+                                                                    disabled={!builds || !Array.isArray(builds) || builds.length === 0}
+                                                                />
+                                                            }
+                                                            label="Lost Permission After Use"
+                                                        />
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                            <ToggleButtonGroup
+                                                                value={filterForUsedBuilds}
+                                                                exclusive
+                                                                onChange={(e, newValue) => {
+                                                                    if (newValue !== null) {
+                                                                        setFilterForUsedBuilds(newValue);
+                                                                    }
+                                                                }}
+                                                                size="small"
+                                                                disabled={!builds || !Array.isArray(builds) || builds.length === 0}
+                                                            >
+                                                                <ToggleButton value="all">Any</ToggleButton>
+                                                                <ToggleButton value="used">Used Resource</ToggleButton>
+                                                                <ToggleButton value="unused">Unused Resource</ToggleButton>
+                                                            </ToggleButtonGroup>
+                                                        </Box>
+
+                                                    </>
+                                                )}
+
                                             </Stack>
 
                                             <Divider sx={{ my: 2 }} />
@@ -2010,6 +2476,7 @@ const ResourceTracker = () => {
                                 filteredProtectedResources={filteredProtectedResources}
                                 builds={filteredBuilds}
                                 pipelines={filteredPipelines}
+                                selectedPipelinesFilter={selectedPipelinesFilter}
                                 logic_containers={filteredLogicContainers}
                                 projects={projects}
                                 repositories={repositories}
@@ -2021,6 +2488,20 @@ const ResourceTracker = () => {
                                 setResourceTypeSelected={setResourceTypeSelected}
                                 getProtectedResourcesByOrgTypeAndIdsSummary={getProtectedResourcesByOrgTypeAndIdsSummary}
                                 selectedPlatformSource={selectedPlatformSource}
+                                viewMode={viewMode}
+                                setViewMode={setViewMode}
+                                resourceFilters={{
+                                    searchTerm,
+                                    protectedState,
+                                    crossProject,
+                                    poolType,
+                                    logic_container_filter,
+                                    filterForOverprivilegedResources,
+                                    filterForOversharedResources,
+                                    selectedProject,
+                                    selectedResourcesFilter,
+                                    selectedResourceTypes
+                                }}
                                 sx={{ height: '100%', width: '100%' }}
                             />
                         </Box>
@@ -2032,6 +2513,7 @@ const ResourceTracker = () => {
                             filteredBadge={isFilteredResource}
                             selectedType={resource_type_selected}
                             filteredProtectedResources={filteredProtectedResources}
+                            allProtectedResources={allResourcesOfSelectedType}
                             logicContainers={filteredLogicContainers}
                             projects={projects}
                             filterFocus={false}
@@ -2039,11 +2521,13 @@ const ResourceTracker = () => {
                                 fetchLogicContainers();
                                 fetchResources(selectedPlatformSource.id);
                             }}
+                            pipelines={pipelines}
                         />
                         <PipelineTable
                             builds={filteredBuilds}
                             filteredBadge={isFilteredPipeline}
                             filteredPipelines={filteredPipelines}
+                            allPipelines={pipelines}
                             filterFocus={false}
                             filteredResourcesTypes_Ids={filteredProtectedResources.map(resource => resource_type_selected + "_" + resource.id)}
                             repositories={repositories}
@@ -2055,6 +2539,7 @@ const ResourceTracker = () => {
                             resourceTypeSelected={resource_type_selected}
                             setResourceTypeSelected={setResourceTypeSelected}
                             getProtectedResourcesByOrgTypeAndIdsSummary={getProtectedResourcesByOrgTypeAndIdsSummary}
+                            fetchResources={fetchResources}
                         />
                     </Box>
                 </>
@@ -2208,6 +2693,61 @@ const ResourceTracker = () => {
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
                                         />
+                                        <Autocomplete
+                                            multiple
+                                            size="small"
+                                            options={allResourcesOfSelectedType || []}
+                                            getOptionLabel={(option) => {
+                                                if (option.__isSelectAll) return option.label;
+                                                return option.name || option.id || '';
+                                            }}
+                                            value={selectedResourcesFilter}
+                                            inputValue={resourceSearchInput}
+                                            onInputChange={(event, newInputValue) => {
+                                                setResourceSearchInput(newInputValue);
+                                            }}
+                                            onChange={(event, newValue, reason) => {
+                                                if (reason === 'selectOption' || reason === 'removeOption') {
+                                                    const selectAllIndex = newValue.findIndex(item => item.__isSelectAll);
+                                                    if (selectAllIndex !== -1) {
+                                                        const filtered = (allResourcesOfSelectedType || []).filter(option =>
+                                                            (option.name || option.id || '').toLowerCase().includes(resourceSearchInput.toLowerCase())
+                                                        );
+                                                        setSelectedResourcesFilter(filtered);
+                                                        setResourceSearchInput(''); // Clear search after select all
+                                                        return;
+                                                    }
+                                                }
+                                                setSelectedResourcesFilter(newValue);
+                                            }}
+                                            filterOptions={(options, params) => {
+                                                const filtered = options.filter(option =>
+                                                    (option.name || option.id || '').toLowerCase().includes(params.inputValue.toLowerCase())
+                                                );
+                                                if (params.inputValue && filtered.length > 0) {
+                                                    return [
+                                                        { __isSelectAll: true, label: `Select all matching (${filtered.length})` },
+                                                        ...filtered
+                                                    ];
+                                                }
+                                                return filtered;
+                                            }}
+                                            renderInput={(params) => (
+                                                <TextField
+                                                    {...params}
+                                                    placeholder="Select resources..."
+                                                    sx={{
+                                                        '& .MuiOutlinedInput-root': {
+                                                            backgroundColor: 'rgba(255,255,255,0.9)',
+                                                            borderRadius: 1
+                                                        }
+                                                    }}
+                                                />
+                                            )}
+                                            sx={{ minWidth: 200 }}
+                                            limitTags={2}
+                                            isOptionEqualToValue={(option, value) => option.id === value.id}
+                                        />
                                         <FormControl variant="outlined" size="small" sx={{ minWidth: 140 }}>
                                             {/* <InputLabel sx={{ backgroundColor: 'rgba(255,255,255,0.9)', px: 1 }}>Logic Container</InputLabel> */}
                                             <Select
@@ -2250,6 +2790,19 @@ const ResourceTracker = () => {
                                                     <MenuItem value="ms-hosted">Microsoft Hosted</MenuItem>
                                                     <MenuItem value="self-hosted">Self-Hosted</MenuItem>
                                                 </Select>
+                                            </FormControl>
+                                        )}
+                                        {resource_type_selected === 'endpoint' && (
+                                            <FormControl variant="outlined" size="small" sx={{ minWidth: 140 }}>
+                                                <TextField
+                                                    size="small"
+                                                    variant="outlined"
+                                                    label="Used in last (days)"
+                                                    type="number"
+                                                    value={endpointLastUsedDays || ''}
+                                                    onChange={e => setEndpointLastUsedDays(e.target.value.replace(/[^0-9]/g, ''))}
+                                                    sx={{ minWidth: 140, backgroundColor: 'rgba(255,255,255,0.9)' }}
+                                                />
                                             </FormControl>
                                         )}
                                     </Box>
@@ -2446,6 +2999,63 @@ const ResourceTracker = () => {
                                             placeholder="Search by Name/ID"
                                             value={searchTermPipelines}
                                             onChange={(e) => setSearchTermPipelines(e.target.value)}
+                                        />
+                                        <Autocomplete
+                                            multiple
+                                            size="small"
+                                            options={pipelines || []}
+                                            getOptionLabel={(option) => {
+                                                if (option.__isSelectAll) return option.label;
+                                                return option.name || option.k_key || '';
+                                            }}
+                                            value={selectedPipelinesFilter}
+                                            inputValue={pipelineSearchInput}
+                                            onInputChange={(event, newInputValue) => {
+                                                setPipelineSearchInput(newInputValue);
+                                            }}
+                                            onChange={(event, newValue, reason) => {
+                                                if (reason === 'selectOption' || reason === 'removeOption') {
+                                                    const selectAllIndex = newValue.findIndex(item => item.__isSelectAll);
+                                                    if (selectAllIndex !== -1) {
+                                                        const filtered = (pipelines || []).filter(option =>
+                                                            (option.name || option.k_key || '').toLowerCase().includes(pipelineSearchInput.toLowerCase())
+                                                        );
+                                                        const limited = filtered.slice(0, 20);
+                                                        setSelectedPipelinesFilter(limited);
+                                                        setPipelineSearchInput(''); // Clear search after select all
+                                                        return;
+                                                    }
+                                                }
+                                                setSelectedPipelinesFilter(newValue);
+                                            }}
+                                            filterOptions={(options, params) => {
+                                                const filtered = options.filter(option =>
+                                                    (option.name || option.k_key || '').toLowerCase().includes(params.inputValue.toLowerCase())
+                                                );
+                                                if (params.inputValue && filtered.length > 0) {
+                                                    const limitedCount = Math.min(filtered.length, 20);
+                                                    return [
+                                                        { __isSelectAll: true, label: `Select all matching (${limitedCount} of ${filtered.length})` },
+                                                        ...filtered
+                                                    ];
+                                                }
+                                                return filtered;
+                                            }}
+                                            renderInput={(params) => (
+                                                <TextField
+                                                    {...params}
+                                                    placeholder="Select pipelines"
+                                                    sx={{
+                                                        '& .MuiOutlinedInput-root': {
+                                                            backgroundColor: 'rgba(255,255,255,0.9)',
+                                                            borderRadius: 1
+                                                        }
+                                                    }}
+                                                />
+                                            )}
+                                            sx={{ minWidth: 200 }}
+                                            limitTags={2}
+                                            isOptionEqualToValue={(option, value) => option.k_key === value.k_key}
                                         />
                                         <FormControl variant="outlined" size="small" sx={{ minWidth: 150 }}>
                                             {/* <InputLabel sx={{ backgroundColor: 'rgba(255,255,255,0.9)', px: 1 }}>Authorization Scope</InputLabel> */}
@@ -2662,8 +3272,96 @@ const ResourceTracker = () => {
                                         ))}
                                     </Box>
 
+                                    <Divider sx={{ borderColor: 'rgba(255,255,255,0.3)', my: 2 }} />
+
+                                    <Typography variant="body2" color="white" sx={{ fontWeight: 500, mb: 1 }}>
+                                        Pipeline Executions
+                                    </Typography>
+
+                                    {(!builds || !Array.isArray(builds) || builds.length === 0) && (
+                                        <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 1 }}>
+                                            <Typography variant="body2" color="white" sx={{ fontStyle: 'italic' }}>
+                                                Missing build data - Pipeline execution filters unavailable
+                                            </Typography>
+                                        </Box>
+                                    )}
+
+                                    <Box 
+                                        sx={{ 
+                                            display: 'flex', 
+                                            flexWrap: 'wrap', 
+                                            gap: 1.5, 
+                                            alignItems: 'center',
+                                            opacity: (!builds || !Array.isArray(builds) || builds.length === 0) ? 0.5 : 1,
+                                            pointerEvents: (!builds || !Array.isArray(builds) || builds.length === 0) ? 'none' : 'auto'
+                                        }}
+                                    >
+                                        <FormControl size="small">
+                                            <TextField
+                                                label="Branch limit"
+                                                type="number"
+                                                size="small"
+                                                variant="outlined"
+                                                value={potentialPipelineExecutionsLimit}
+                                                onChange={e => {
+                                                    const val = e.target.value.replace(/[^0-9]/g, '');
+                                                    setPotentialPipelineExecutionsLimit(val);
+                                                }}
+                                                placeholder="Limit preview builds"
+                                                disabled={!builds || !Array.isArray(builds) || builds.length === 0}
+                                                sx={{
+                                                    '& .MuiOutlinedInput-root': {
+                                                        backgroundColor: 'rgba(255,255,255,0.9)',
+                                                        borderRadius: 1
+                                                    }
+                                                }}
+                                            />
+                                        </FormControl>
+                                        {resource_type_selected === 'endpoint' && (
+                                            <>
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={filterForHistoricUnauthorizedServiceConnection}
+                                                            onChange={(e) => setFilterForHistoricUnauthorizedServiceConnection(e.target.checked)}
+                                                            disabled={!builds || !Array.isArray(builds) || builds.length === 0}
+                                                            sx={{ color: 'white', '&.Mui-checked': { color: 'white' } }}
+                                                        />
+                                                    }
+                                                    label={<Typography variant="body2" color="white">Lost Permission After Use</Typography>}
+                                                />
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    <ToggleButtonGroup
+                                                        value={filterForUsedBuilds}
+                                                        exclusive
+                                                        onChange={(e, newValue) => {
+                                                            if (newValue !== null) {
+                                                                setFilterForUsedBuilds(newValue);
+                                                            }
+                                                        }}
+                                                        size="small"
+                                                        disabled={!builds || !Array.isArray(builds) || builds.length === 0}
+                                                        sx={{
+                                                            '& .MuiToggleButton-root': {
+                                                                bgcolor: 'rgba(255,255,255,0.9)',
+                                                                '&.Mui-selected': {
+                                                                    bgcolor: 'rgba(255,255,255,1)',
+                                                                    color: '#5669b3'
+                                                                }
+                                                            }
+                                                        }}
+                                                    >
+                                                        <ToggleButton value="all">Any</ToggleButton>
+                                                        <ToggleButton value="used">Used Resource</ToggleButton>
+                                                        <ToggleButton value="unused">Unused Resource</ToggleButton>
+                                                    </ToggleButtonGroup>
+                                                </Box>
+                                            </>
+                                        )}
+                                    </Box>
+
                                     <Box sx={{
-                                        display: 'flex', justifyContent: 'right', mt: 1
+                                        display: 'flex', justifyContent: 'right', mt: 2
                                     }}>
                                         <Typography
                                             variant="body2"
